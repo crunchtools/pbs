@@ -412,4 +412,4 @@ verify_Wordpress() {
 	ls -ltrh $backups/$updraft | grep uploads.zip
 }
 
-init $*
+init "$@"
