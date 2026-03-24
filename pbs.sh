@@ -129,7 +129,7 @@ backup_Files() {
 					--progress-terminal-title \
 					--delete-during \
 					--quiet \
-					--config /etc/pbs/rclone.conf \
+					--config /etc/rclone.conf \
 					pcloud:/$directory pcloud:/Backups/$directory/$rotation
 			done
 		done
@@ -186,7 +186,7 @@ backup_HomeDirectories() {
 					--progress-terminal-title \
 					--delete-during \
 					--quiet \
-					--config /etc/pbs/rclone.conf \
+					--config /etc/rclone.conf \
 					--exclude "AutoSync/" \
 					--exclude "Desktop/" \
 					--exclude "Documents/" \
@@ -248,7 +248,7 @@ backup_HomeDirectories() {
 						--checkers 4 \
 						--transfers 2 \
 						--quiet \
-						--config /etc/pbs/rclone.conf \
+						--config /etc/rclone.conf \
 						"$staging/$username" "$dest"
 					rm -rf "$staging/$username"
 				fi
@@ -361,7 +361,7 @@ verify_HomeDirectories() {
 		do
 			echo
 			echo_bold "pcloud:/Backups/HomeDirectories/$rotation/$hostname/$username"
-			/usr/bin/rclone ls --config /etc/pbs/rclone.conf \
+			/usr/bin/rclone ls --config /etc/rclone.conf \
 				--max-depth 2 \
 				"pcloud:/Backups/HomeDirectories/$rotation/$hostname/$username" 2>/dev/null | head -20
 			if [ $? -ne 0 ]; then
