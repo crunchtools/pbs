@@ -10,7 +10,6 @@ Type=oneshot
 ExecStart=/usr/bin/podman run --rm \
     --name pbs-monthly-1 \
     -v /etc/rclone.conf:/etc/rclone.conf:ro,Z \
-    -v /etc/passwd:/host-etc/passwd:ro \
     -v /var/home:/var/home:ro \
     -v /home:/home:ro \
     --tmpfs /tmp:rw \

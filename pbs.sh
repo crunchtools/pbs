@@ -148,21 +148,23 @@ backup_HomeDirectories() {
 		hostname=$(hostname -s)
 		staging="/tmp/staging"
 
-		# Discover users: root + UID >= 1000 with real login shells
-		users=$(awk -F: '($3 == 0 || $3 >= 1000) && $7 !~ /(nologin|false)/ {print $1 ":" $6}' /host-etc/passwd)
+		# Discover home directories by listing /home and /var/home
+		homedirs=""
+		for basedir in /home /var/home; do
+			if [ -d "$basedir" ]; then
+				for d in "$basedir"/*/; do
+					[ -d "$d" ] && homedirs="$homedirs $d"
+				done
+			fi
+		done
 
 		for rotation in $rotations
 		do
-			for user_entry in $users
+			for homedir in $homedirs
 			do
-				username=$(echo "$user_entry" | cut -d: -f1)
-				homedir=$(echo "$user_entry" | cut -d: -f2)
-
-				# Skip if home directory doesn't exist
-				if [ ! -d "$homedir" ]; then
-					debug "Skipping $username: $homedir does not exist"
-					continue
-				fi
+				# Strip trailing slash
+				homedir="${homedir%/}"
+				username=$(basename "$homedir")
 
 				# Skip if home directory is empty
 				if [ -z "$(ls -A "$homedir" 2>/dev/null)" ]; then
@@ -343,16 +345,20 @@ verify_Files() {
 
 verify_HomeDirectories() {
 	hostname=$(hostname -s)
-	users=$(awk -F: '($3 == 0 || $3 >= 1000) && $7 !~ /(nologin|false)/ {print $1 ":" $6}' /host-etc/passwd)
 
-	for user_entry in $users
-	do
-		username=$(echo "$user_entry" | cut -d: -f1)
-		homedir=$(echo "$user_entry" | cut -d: -f2)
-
-		if [ ! -d "$homedir" ]; then
-			continue
+	homedirs=""
+	for basedir in /home /var/home; do
+		if [ -d "$basedir" ]; then
+			for d in "$basedir"/*/; do
+				[ -d "$d" ] && homedirs="$homedirs $d"
+			done
 		fi
+	done
+
+	for homedir in $homedirs
+	do
+		homedir="${homedir%/}"
+		username=$(basename "$homedir")
 
 		echo
 		echo_color "Verifying home directory backups for $username ($homedir)"
