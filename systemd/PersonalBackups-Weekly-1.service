@@ -1,0 +1,18 @@
+[Unit]
+Description=Weekly backup job
+RefuseManualStart=no
+RefuseManualStop=no
+Wants=PersonalBackups-Weekly-1.timer
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/podman run --rm \
+    --name pbs-weekly \
+    -v /etc/rclone.conf:/etc/rclone.conf:ro,Z \
+    -v /etc/passwd:/host-etc/passwd:ro \
+    -v /var/home:/var/home:ro \
+    -v /home:/home:ro \
+    --tmpfs /tmp:rw \
+    --network=host \
+    quay.io/crunchtools/pbs:latest \
+    -B -m "Files HomeDirectories" -r Weekly-1

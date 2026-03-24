@@ -1,0 +1,11 @@
+[Unit]
+Description=Run PersonalBackups.service on even months: February, April, etc
+Requires=PersonalBackups-Monthly-2.service
+
+[Timer]
+OnCalendar=*-2,4,6,8,10,12-01 04:00:00
+Persistent=true 
+Unit=PersonalBackups-Monthly-2.service
+
+[Install]
+WantedBy=timers.target

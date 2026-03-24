@@ -1,0 +1,19 @@
+[Unit]
+Description=Monthly-1 backup job
+After=PersonalBackups-Weekly-1.service
+RefuseManualStart=no
+RefuseManualStop=no
+Wants=PersonalBackups-Monthly-1.timer
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/podman run --rm \
+    --name pbs-monthly-1 \
+    -v /etc/rclone.conf:/etc/rclone.conf:ro,Z \
+    -v /etc/passwd:/host-etc/passwd:ro \
+    -v /var/home:/var/home:ro \
+    -v /home:/home:ro \
+    --tmpfs /tmp:rw \
+    --network=host \
+    quay.io/crunchtools/pbs:latest \
+    -B -m "Files HomeDirectories" -r Monthly-1
