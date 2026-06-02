@@ -56,16 +56,37 @@ Follow [Semantic Versioning 2.0.0](https://semver.org/) strictly. MAJOR/MINOR/PA
 
 ## VI. Container Conventions
 
+- **Containerfile** at the repo root (not `Dockerfile`)
 - Base image: `registry.access.redhat.com/ubi10/ubi-minimal`
+- Required **LABEL** metadata: `maintainer` and `description` (per the universal constitution)
+- Packages installed with `microdnf` (`dnf` family); EPEL repo files copied in (no RHSM secrets needed)
 - Registry: Quay.io only (no GHCR)
 - Weekly rebuild cron (Monday 6 AM UTC) picks up base image updates
-- EPEL repo files copied in (no RHSM secrets needed)
 - GHA layer caching (`cache-from: type=gha`, `cache-to: type=gha,mode=max`)
-- Trivy vulnerability scanning on push
 
 ---
 
-## VII. Governance
+## VII. Testing
+
+| Test | What it verifies | Required |
+|------|------------------|----------|
+| **Build test** | CI builds the image from the Containerfile on every push and PR | Yes |
+| **Smoke test** | Container starts and `rclone version` responds | Recommended |
+| **Security scan** | Trivy CVE scan on every push | Recommended |
+
+---
+
+## VIII. Quality Gates
+
+Every change must pass before merge or push to registry:
+
+1. **Build** — `podman build -f Containerfile .` succeeds
+2. **Smoke test** — container starts without error
+3. **Security scan** — Trivy scan completes (`continue-on-error: true`)
+
+---
+
+## IX. Governance
 
 ### Amendment Process
 
