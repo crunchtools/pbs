@@ -326,13 +326,13 @@ dump_mariadb_databases() {
 		svcname=$(basename "$svcdir")
 
 		if podman-remote --url unix:///run/podman/podman.sock ps --format '{{.Names}}' 2>/dev/null | grep -q "^${svcname}$"; then
-			mkdir -p "$staging_dir/$svcname/data/backups"
+			mkdir -p "$staging_dir/$svcname/backups"
 			echo "Dumping MariaDB for $svcname"
 			podman-remote --url unix:///run/podman/podman.sock exec "$svcname" mysqldump --all-databases \
-				> "$staging_dir/$svcname/data/backups/all-databases.sql" 2>/dev/null
+				> "$staging_dir/$svcname/backups/all-databases.sql" 2>/dev/null
 			if [ $? -ne 0 ]; then
 				echo "Warning: MariaDB dump failed for $svcname"
-				rm -f "$staging_dir/$svcname/data/backups/all-databases.sql"
+				rm -f "$staging_dir/$svcname/backups/all-databases.sql"
 			fi
 		else
 			echo "Warning: container $svcname not running, skipping MariaDB dump"
@@ -349,17 +349,17 @@ dump_postgresql_databases() {
 		svcname=$(basename "$svcdir")
 
 		if podman-remote --url unix:///run/podman/podman.sock ps --format '{{.Names}}' 2>/dev/null | grep -q "^${svcname}$"; then
-			mkdir -p "$staging_dir/$svcname/data/backups"
+			mkdir -p "$staging_dir/$svcname/backups"
 			echo "Dumping PostgreSQL for $svcname"
 			podman-remote --url unix:///run/podman/podman.sock exec "$svcname" pg_dumpall -U postgres \
-				> "$staging_dir/$svcname/data/backups/all-databases.sql" 2>/dev/null
+				> "$staging_dir/$svcname/backups/all-databases.sql" 2>/dev/null
 			if [ $? -ne 0 ]; then
 				echo "Warning: PostgreSQL dump failed for $svcname, trying without -U postgres"
 				podman-remote --url unix:///run/podman/podman.sock exec "$svcname" pg_dumpall \
-					> "$staging_dir/$svcname/data/backups/all-databases.sql" 2>/dev/null
+					> "$staging_dir/$svcname/backups/all-databases.sql" 2>/dev/null
 				if [ $? -ne 0 ]; then
 					echo "Warning: PostgreSQL dump failed for $svcname"
-					rm -f "$staging_dir/$svcname/data/backups/all-databases.sql"
+					rm -f "$staging_dir/$svcname/backups/all-databases.sql"
 				fi
 			fi
 		else
