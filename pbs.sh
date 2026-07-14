@@ -394,8 +394,8 @@ backup_Servers() {
 			/usr/bin/rclone sync --skip-links \
 				--human-readable \
 				--size-only \
-				--checkers 8 \
-				--transfers 4 \
+				--checkers 32 \
+				--transfers 16 \
 				--progress \
 				--progress-terminal-title \
 				--delete-during \
