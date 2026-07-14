@@ -375,7 +375,7 @@ backup_Servers() {
 
 	if [ $rotations = "Weekly-1" ] || [ $rotations = "Monthly-1" ] || [ $rotations = "Monthly-2" ]
 	then
-		hostname=$(hostname -s)
+		hostname=$(hostname -f)
 		staging="/tmp/staging-srv"
 		mkdir -p "$staging"
 
@@ -495,7 +495,7 @@ verify_HomeDirectories() {
 }
 
 verify_Servers() {
-	hostname=$(hostname -s)
+	hostname=$(hostname -f)
 
 	for rotation in Weekly-1 Monthly-1 Monthly-2
 	do
