@@ -396,6 +396,7 @@ backup_Servers() {
 				--size-only \
 				--checkers 32 \
 				--transfers 16 \
+				--delete-excluded \
 				--progress \
 				--progress-terminal-title \
 				--delete-during \
