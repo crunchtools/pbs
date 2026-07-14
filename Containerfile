@@ -21,6 +21,7 @@ RUN microdnf install -y --nodocs \
         hostname \
         openssh-clients \
         gnupg2 \
+        podman-remote \
     && microdnf clean all
 
 COPY pbs.sh /usr/local/bin/pbs.sh

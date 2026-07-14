@@ -317,6 +317,123 @@ backup_sqlite_databases() {
 	done
 }
 
+dump_mariadb_databases() {
+	local staging_dir="$1"
+
+	for dbdir in /srv/*/data/mariadb; do
+		[ -d "$dbdir" ] || continue
+		svcdir=$(dirname "$(dirname "$dbdir")")
+		svcname=$(basename "$svcdir")
+
+		if podman-remote --url unix:///run/podman/podman.sock ps --format '{{.Names}}' 2>/dev/null | grep -q "^${svcname}$"; then
+			mkdir -p "$staging_dir/$svcname/data/backups"
+			echo "Dumping MariaDB for $svcname"
+			podman-remote --url unix:///run/podman/podman.sock exec "$svcname" mysqldump --all-databases \
+				> "$staging_dir/$svcname/data/backups/all-databases.sql" 2>/dev/null
+			if [ $? -ne 0 ]; then
+				echo "Warning: MariaDB dump failed for $svcname"
+				rm -f "$staging_dir/$svcname/data/backups/all-databases.sql"
+			fi
+		else
+			echo "Warning: container $svcname not running, skipping MariaDB dump"
+		fi
+	done
+}
+
+dump_postgresql_databases() {
+	local staging_dir="$1"
+
+	for dbdir in /srv/*/data/pgdata /srv/*/data/postgres; do
+		[ -d "$dbdir" ] || continue
+		svcdir=$(dirname "$(dirname "$dbdir")")
+		svcname=$(basename "$svcdir")
+
+		if podman-remote --url unix:///run/podman/podman.sock ps --format '{{.Names}}' 2>/dev/null | grep -q "^${svcname}$"; then
+			mkdir -p "$staging_dir/$svcname/data/backups"
+			echo "Dumping PostgreSQL for $svcname"
+			podman-remote --url unix:///run/podman/podman.sock exec "$svcname" pg_dumpall -U postgres \
+				> "$staging_dir/$svcname/data/backups/all-databases.sql" 2>/dev/null
+			if [ $? -ne 0 ]; then
+				echo "Warning: PostgreSQL dump failed for $svcname, trying without -U postgres"
+				podman-remote --url unix:///run/podman/podman.sock exec "$svcname" pg_dumpall \
+					> "$staging_dir/$svcname/data/backups/all-databases.sql" 2>/dev/null
+				if [ $? -ne 0 ]; then
+					echo "Warning: PostgreSQL dump failed for $svcname"
+					rm -f "$staging_dir/$svcname/data/backups/all-databases.sql"
+				fi
+			fi
+		else
+			echo "Warning: container $svcname not running, skipping PostgreSQL dump"
+		fi
+	done
+}
+
+backup_Servers() {
+	echo
+	debug "Debug: backing up servers"
+	echo
+
+	if [ $rotations = "Weekly-1" ] || [ $rotations = "Monthly-1" ] || [ $rotations = "Monthly-2" ]
+	then
+		hostname=$(hostname -s)
+		staging="/tmp/staging-srv"
+		mkdir -p "$staging"
+
+		# Dump relational databases before sync
+		dump_mariadb_databases "$staging"
+		dump_postgresql_databases "$staging"
+
+		# Stage SQLite databases for safe backup
+		backup_sqlite_databases "/srv" "$staging"
+
+		for rotation in $rotations
+		do
+			dest="pcloud:/Backups/Servers/$hostname/$rotation"
+			echo "Backing up /srv to $dest"
+
+			/usr/bin/rclone sync --skip-links \
+				--human-readable \
+				--size-only \
+				--checkers 8 \
+				--transfers 4 \
+				--progress \
+				--progress-terminal-title \
+				--delete-during \
+				--quiet \
+				--config /etc/rclone.conf \
+				--exclude "*/data/mariadb/" \
+				--exclude "*/data/pgdata/" \
+				--exclude "*/data/postgres/" \
+				--exclude "*/data/logs/" \
+				--exclude ".git/" \
+				--exclude "*/flask_session/" \
+				--exclude "*/__pycache__/" \
+				--exclude "*/node_modules/" \
+				--exclude "*.pyc" \
+				--exclude "*.db-wal" \
+				--exclude "*.db-shm" \
+				--exclude "*.db-journal" \
+				/srv "$dest"
+
+			# Overlay staged database dumps and SQLite copies
+			if [ -d "$staging" ]; then
+				echo "Copying staged database dumps to $dest"
+				/usr/bin/rclone copy --skip-links \
+					--human-readable \
+					--checkers 4 \
+					--transfers 2 \
+					--quiet \
+					--config /etc/rclone.conf \
+					"$staging" "$dest"
+			fi
+		done
+
+		rm -rf "$staging"
+	else
+		echo "Error: no rotation specified. Please select from one of: Weekly-1, Monthly-1, or Monthly-2"
+	fi
+}
+
 backup_Lastpass() {
 	echo "Error: Lastpass backup requires interactive mode, not supported in container context"
 	exit 1
@@ -374,6 +491,24 @@ verify_HomeDirectories() {
 				echo "  (no backup found)"
 			fi
 		done
+	done
+}
+
+verify_Servers() {
+	hostname=$(hostname -s)
+
+	for rotation in Weekly-1 Monthly-1 Monthly-2
+	do
+		echo
+		echo_color "Verifying server backups: $rotation"
+		echo
+		echo_bold "pcloud:/Backups/Servers/$hostname/$rotation"
+		/usr/bin/rclone ls --config /etc/rclone.conf \
+			--max-depth 2 \
+			"pcloud:/Backups/Servers/$hostname/$rotation" 2>/dev/null | head -30
+		if [ $? -ne 0 ]; then
+			echo "  (no backup found)"
+		fi
 	done
 }
 
