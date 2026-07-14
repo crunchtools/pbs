@@ -405,7 +405,7 @@ backup_Servers() {
 				--exclude "*/data/pgdata/" \
 				--exclude "*/data/postgres/" \
 				--exclude "*/data/logs/" \
-				--exclude "*/code/cpan/" \
+				--exclude "*/code/" \
 				--exclude "*/slots/" \
 				--exclude ".git/" \
 				--exclude "*/flask_session/" \
