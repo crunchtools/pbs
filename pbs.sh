@@ -15,6 +15,8 @@ init() {
 	rotations="none"
 	directories="Documents Downloads Autosync"
 	passphrase="none"
+	rclone_checkers=32
+	rclone_transfers=16
 
         while getopts "m:r:BVvh" options
 		do
@@ -123,8 +125,8 @@ backup_Files() {
 				/usr/bin/rclone sync --skip-links \
 				    	--human-readable \
 					--size-only \
-					--checkers 8 \
-					--transfers 4 \
+					--checkers $rclone_checkers \
+					--transfers $rclone_transfers \
 					--progress \
 					--progress-terminal-title \
 					--delete-during \
@@ -182,8 +184,8 @@ backup_HomeDirectories() {
 				/usr/bin/rclone sync --skip-links \
 					--human-readable \
 					--size-only \
-					--checkers 8 \
-					--transfers 4 \
+					--checkers $rclone_checkers \
+					--transfers $rclone_transfers \
 					--progress \
 					--progress-terminal-title \
 					--delete-during \
@@ -247,8 +249,8 @@ backup_HomeDirectories() {
 					echo "Copying staged SQLite databases for $username"
 					/usr/bin/rclone copy --skip-links \
 						--human-readable \
-						--checkers 4 \
-						--transfers 2 \
+						--checkers $rclone_checkers \
+						--transfers $rclone_transfers \
 						--quiet \
 						--config /etc/rclone.conf \
 						"$staging/$username" "$dest"
@@ -394,8 +396,8 @@ backup_Servers() {
 			/usr/bin/rclone sync --skip-links \
 				--human-readable \
 				--size-only \
-				--checkers 32 \
-				--transfers 16 \
+				--checkers $rclone_checkers \
+				--transfers $rclone_transfers \
 				--delete-excluded \
 				--progress \
 				--progress-terminal-title \
@@ -423,8 +425,8 @@ backup_Servers() {
 				echo "Copying staged database dumps to $dest"
 				/usr/bin/rclone copy --skip-links \
 					--human-readable \
-					--checkers 4 \
-					--transfers 2 \
+					--checkers $rclone_checkers \
+					--transfers $rclone_transfers \
 					--quiet \
 					--config /etc/rclone.conf \
 					"$staging" "$dest"
