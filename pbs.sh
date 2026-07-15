@@ -186,6 +186,7 @@ backup_HomeDirectories() {
 					--size-only \
 					--checkers $rclone_checkers \
 					--transfers $rclone_transfers \
+					--delete-excluded \
 					--progress \
 					--progress-terminal-title \
 					--delete-during \
