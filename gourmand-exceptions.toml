@@ -1,0 +1,6 @@
+[[exceptions]]
+check = "random_scripts"
+path = "pbs.sh"
+justification = "Container entrypoint COPYed into the image bin directory and set as ENTRYPOINT by Containerfile"
+classification = "by_design"
+
