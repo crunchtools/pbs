@@ -1,102 +1,49 @@
 # pbs Constitution
 
-> **Version:** 1.0.0
+> **Version:** 1.1.0
 > **Ratified:** 2026-03-23
+> **Amended:** 2026-10-02
 > **Status:** Active
-> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.17.0
+> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.18.0
 > **Profile:** Container Image
 
-This constitution establishes the core principles, constraints, and workflows that govern all development on pbs (Personal Backup System).
+This file holds what is specific to pbs (Personal Backup System). The fleet
+rules and the Container Image profile apply at the inherited version and are
+checked against this repo's files by `constitution.yml`. They are not restated
+here.
 
----
+## Purpose
 
-## I. Purpose
+Containerized backup system that runs rclone-based backups of pCloud
+directories and home directories. Triggered by systemd timers on bootc hosts
+via `podman run`. A personal infrastructure tool, not a public service.
 
-Containerized backup system that runs rclone-based backups of pCloud directories and home directories. Triggered by systemd timers on bootc hosts via `podman run`.
+## Image Contents
 
----
+- **Base:** `registry.access.redhat.com/ubi10/ubi-minimal`, packages via
+  `microdnf`.
+- **EPEL:** `etc/epel.repo` and `etc/RPM-GPG-KEY-EPEL-10` are copied into the
+  image to get `rclone`, so no RHSM secrets are needed at build time.
+- **Packages:** `rclone`, `sqlite`, `file`, `findutils`, `hostname`,
+  `openssh-clients`, `gnupg2`, `podman-remote`.
+- **Entrypoint:** `pbs.sh` (Bash). Default command is a `Weekly-1` backup of
+  the `Files` and `HomeDirectories` modules.
 
-## II. Technology Stack
+## Rotations and Host Units
 
-| Layer | Technology |
-|-------|------------|
-| Language | Bash |
-| Container Base | UBI 10 Minimal |
-| Package Manager | microdnf |
-| Backup Tool | rclone |
-| Database Tool | SQLite |
+The `systemd/` units are the host side of the contract. Each runs the image
+once with `--network=host`, a tmpfs `/tmp`, `/etc/rclone.conf` read-only and
+`/home` and `/var/home` read-only.
 
----
+| Rotation | Timer schedule |
+|----------|----------------|
+| `Weekly-1` | Fridays 06:00 |
+| `Monthly-1` | 1st of odd months, 04:00 |
+| `Monthly-2` | 1st of even months, 04:00 |
 
-## III. Distribution
-
-| Channel | Command |
-|---------|---------|
-| Container | `podman run quay.io/crunchtools/pbs` |
-
-Single distribution channel. This is a personal infrastructure tool, not a public service.
-
----
-
-## IV. Naming Conventions
-
-| Context | Name |
-|---------|------|
-| GitHub repo | `crunchtools/pbs` |
-| Container image | `quay.io/crunchtools/pbs` |
-| License | AGPL-3.0-or-later |
-
----
-
-## V. Versioning
-
-Follow [Semantic Versioning 2.0.0](https://semver.org/) strictly. MAJOR/MINOR/PATCH.
-
----
-
-## VI. Container Conventions
-
-- **Containerfile** at the repo root (not `Dockerfile`)
-- Base image: `registry.access.redhat.com/ubi10/ubi-minimal`
-- Required **LABEL** metadata: `maintainer` and `description` (per the universal constitution)
-- Packages installed with `microdnf` (`dnf` family); EPEL repo files copied in (no RHSM secrets needed)
-- Registry: Quay.io only (no GHCR)
-- Weekly rebuild cron (Monday 6 AM UTC) picks up base image updates
-- GHA layer caching (`cache-from: type=gha`, `cache-to: type=gha,mode=max`)
-
----
-
-## VII. Testing
-
-| Test | What it verifies | Required |
-|------|------------------|----------|
-| **Build test** | CI builds the image from the Containerfile on every push and PR | Yes |
-| **Smoke test** | Container starts and `rclone version` responds | Recommended |
-| **Security scan** | Trivy CVE scan on every push | Recommended |
-
----
-
-## VIII. Quality Gates
-
-Every change must pass before merge or push to registry:
-
-1. **Build** — `podman build -f Containerfile .` succeeds
-2. **Smoke test** — container starts without error
-3. **Security scan** — Trivy scan completes (`continue-on-error: true`)
-
----
-
-## IX. Governance
-
-### Amendment Process
-
-1. Create a PR with proposed changes to this constitution
-2. Document rationale in PR description
-3. Require maintainer approval
-4. Update version number upon merge
-
-### Ratification History
+## History
 
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0.0 | 2026-03-23 | Initial constitution |
+| 1.1.0 | 2026-10-02 | Manifest under constitution v1.18.0: fleet and profile restatement removed; image contents and rotation units kept |
