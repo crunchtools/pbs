@@ -1,6 +1,6 @@
 # pbs Constitution
 
-> **Version:** 1.1.0
+> **Version:** 1.2.0
 > **Ratified:** 2026-03-23
 > **Amended:** 2026-10-02
 > **Status:** Active
@@ -35,6 +35,10 @@ The `systemd/` units are the host side of the contract. Each runs the image
 once with `--network=host`, a tmpfs `/tmp`, `/etc/rclone.conf` read-only and
 `/home` and `/var/home` read-only.
 
+The `systemd/lotor/` units are the exception: they run the `Files` module only,
+which syncs pCloud to pCloud and reads nothing from the host, so they mount
+`/etc/rclone.conf` and nothing else. They keep the same schedule.
+
 | Rotation | Timer schedule |
 |----------|----------------|
 | `Weekly-1` | Fridays 06:00 |
@@ -47,3 +51,4 @@ once with `--network=host`, a tmpfs `/tmp`, `/etc/rclone.conf` read-only and
 |---------|------|---------|
 | 1.0.0 | 2026-03-23 | Initial constitution |
 | 1.1.0 | 2026-10-02 | Manifest under constitution v1.18.0: fleet and profile restatement removed; image contents and rotation units kept |
+| 1.2.0 | 2026-10-04 | `systemd/lotor/` units added: Files module only, no host mounts beyond `rclone.conf` (RT #1503) |
