@@ -11,6 +11,9 @@ All notable changes to this project are documented here. The format follows
 - `systemd/lotor/`: PersonalBackups units for lotor that run the `Files` module
   only (pcloud to pcloud). The personal rotations moved off the laptop when it
   became a managed endpoint (RT #1503).
+- `Files` module rotates `pcloud:/Projects`. Projects moved out of
+  `Documents/Professional` to the top level on 2026-10-05, which dropped it
+  from every rotation.
 
 ### Changed
 

@@ -13,7 +13,7 @@ init() {
 	modules="Files HomeDirectories Lastpass RequestTracker MediaWiki"
 	verbose=0
 	rotations="none"
-	directories="Documents Downloads Autosync"
+	directories="Documents Downloads Autosync Projects"
 	passphrase="none"
 	rclone_checkers=32
 	rclone_transfers=16
