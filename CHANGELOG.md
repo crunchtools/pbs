@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `systemd/lotor/`: PersonalBackups units for lotor that run the `Files` module
+  only (pcloud to pcloud). The personal rotations moved off the laptop when it
+  became a managed endpoint (RT #1503).
+
 ### Changed
 
 - Constitution is now a v1.18.0 manifest: it holds only what is specific to

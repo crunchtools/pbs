@@ -1,0 +1,10 @@
+[Unit]
+Description=Run PersonalBackups weekly on Fridays at 6 AM
+
+[Timer]
+OnCalendar=Fri *-*-* 06:00:00
+Persistent=true
+Unit=PersonalBackups-Weekly-1.service
+
+[Install]
+WantedBy=timers.target

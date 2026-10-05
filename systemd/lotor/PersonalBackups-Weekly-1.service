@@ -1,0 +1,16 @@
+[Unit]
+Description=Personal pCloud rotation (Weekly-1): pcloud to pcloud via rclone
+RefuseManualStart=no
+RefuseManualStop=no
+Wants=PersonalBackups-Weekly-1.timer
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/podman run --rm \
+    --security-opt label=disable \
+    --name pbs-personal-weekly \
+    -v /etc/rclone.conf:/etc/rclone.conf:ro \
+    --tmpfs /tmp:rw \
+    --network=host \
+    quay.io/crunchtools/pbs:latest \
+    -B -m Files -r Weekly-1
