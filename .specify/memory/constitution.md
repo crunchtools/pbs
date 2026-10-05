@@ -1,6 +1,6 @@
 # pbs Constitution
 
-> **Version:** 1.1.0
+> **Version:** 1.2.0
 > **Ratified:** 2026-03-23
 > **Amended:** 2026-10-02
 > **Status:** Active
