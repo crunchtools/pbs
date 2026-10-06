@@ -125,6 +125,7 @@ backup_Files() {
 				/usr/bin/rclone sync --skip-links \
 				    	--human-readable \
 					--size-only \
+					--fast-list \
 					--checkers $rclone_checkers \
 					--transfers $rclone_transfers \
 					--progress \
