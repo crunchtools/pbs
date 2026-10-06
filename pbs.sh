@@ -17,6 +17,10 @@ init() {
 	passphrase="none"
 	rclone_checkers=32
 	rclone_transfers=16
+	# Periodic one-line stats. --progress redraws twice a second, and under
+	# systemd every redraw becomes a journal line.
+	rclone_stats="--stats 1m --stats-one-line --stats-log-level NOTICE"
+	markers="pcloud:/Backups/Rotations"
 
         while getopts "m:r:BVvh" options
 		do
@@ -104,16 +108,22 @@ get_passphrase() {
 }
 
 backup() {
+	local failed=0
+
 	for i in $modules
 	do
-		backup_$i
+		backup_$i || failed=1
 	done
+
+	return $failed
 }
 
 backup_Files() {
 	echo
 	debug "Debug: backing up files"
 	echo
+
+	local failed=0 started finished status
 
 	if [ $rotations = "Weekly-1" ] || [ $rotations = "Monthly-1" ] || [ $rotations = "Monthly-2" ]
 	then
@@ -122,23 +132,43 @@ backup_Files() {
 			for directory in $directories
 			do
 				echo "Synchronizing pcloud:$directory to pcloud:/Backups/$directory/$rotation"
+				started=$(date +%s)
 				/usr/bin/rclone sync --skip-links \
 				    	--human-readable \
 					--size-only \
 					--fast-list \
 					--checkers $rclone_checkers \
 					--transfers $rclone_transfers \
-					--progress \
-					--progress-terminal-title \
+					--delete-excluded \
+					$rclone_stats \
 					--delete-during \
-					--quiet \
 					--config /etc/rclone.conf \
+					--exclude ".venv/" \
+					--exclude "node_modules/" \
+					--exclude "__pycache__/" \
+					--exclude "*.pyc" \
 					pcloud:/$directory pcloud:/Backups/$directory/$rotation
+				status=$?
+				finished=$(date +%s)
+
+				if [ $status -ne 0 ]; then
+					echo "Error: rclone exited $status synchronizing $directory to $rotation"
+					failed=1
+				fi
+
+				# Marker read by check_personal_backup_freshness.sh in nagios-agent.
+				# Written on failure too, so a failed run alerts before it goes stale.
+				echo "Files|$directory|$rotation|$started|$finished|$status" | \
+					/usr/bin/rclone rcat --config /etc/rclone.conf \
+					"$markers/Files.$directory.$rotation" || failed=1
 			done
 		done
 	else
 		echo "Error: no rotation specied. Please select from one of: Weekly-1, Monthly-1, or Monthly-2"
+		failed=1
 	fi
+
+	return $failed
 }
 
 backup_HomeDirectories() {
@@ -188,10 +218,8 @@ backup_HomeDirectories() {
 					--checkers $rclone_checkers \
 					--transfers $rclone_transfers \
 					--delete-excluded \
-					--progress \
-					--progress-terminal-title \
+					$rclone_stats \
 					--delete-during \
-					--quiet \
 					--config /etc/rclone.conf \
 					--exclude "AutoSync/" \
 					--exclude "Desktop/" \
@@ -401,10 +429,8 @@ backup_Servers() {
 				--checkers $rclone_checkers \
 				--transfers $rclone_transfers \
 				--delete-excluded \
-				--progress \
-				--progress-terminal-title \
+				$rclone_stats \
 				--delete-during \
-				--quiet \
 				--config /etc/rclone.conf \
 				--exclude "*/data/mariadb/" \
 				--exclude "*/data/pgdata/" \
