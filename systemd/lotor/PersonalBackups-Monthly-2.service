@@ -2,7 +2,6 @@
 Description=Personal pCloud rotation (Monthly-2): pcloud to pcloud via rclone
 RefuseManualStart=no
 RefuseManualStop=no
-Wants=PersonalBackups-Monthly-2.timer
 
 [Service]
 Type=oneshot
