@@ -15,8 +15,10 @@ here.
 ## Purpose
 
 Containerized backup system that runs rclone-based backups of pCloud
-directories and home directories. Triggered by systemd timers on bootc hosts
-via `podman run`. A personal infrastructure tool, not a public service.
+directories and home directories. On lotor, Hermes jobs start the static
+systemd services (no timers since 2026-10-16); elsewhere, systemd timers
+start them. Either way the unit runs `podman run`. A personal infrastructure
+tool, not a public service.
 
 ## Image Contents
 

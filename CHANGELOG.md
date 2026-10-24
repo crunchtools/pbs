@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Removed
+
+- `systemd/lotor/*.timer`. Hermes jobs have scheduled the lotor rotations
+  since 2026-10-16, so redeploying these timers would run every backup
+  twice. The `Wants=<unit>.timer` lines in the lotor services, which
+  pointed at the deleted timers, are gone too.
+
 ## [2.0.0] - 2026-10-06
 
 ### Added
