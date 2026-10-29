@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-28
+
+### Fixed
+
+- When `sqlite3 .backup` fails and pbs falls back to a raw `cp` of the
+  database, the warning now prints at normal verbosity, like the MariaDB and
+  PostgreSQL dump warnings. It used to print only with `-v`, so a fallback
+  copy that might be torn never reached the journal (RT #1537).
+
 ### Removed
 
 - `systemd/lotor/*.timer`. Hermes jobs have scheduled the lotor rotations

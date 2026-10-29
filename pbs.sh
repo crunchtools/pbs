@@ -342,7 +342,7 @@ backup_sqlite_databases() {
 			sqlite3 "$dbfile" ".backup '$dest_path'" 2>/dev/null
 
 			if [ $? -ne 0 ]; then
-				debug "Warning: sqlite3 .backup failed for $dbfile, copying raw file"
+				echo "Warning: sqlite3 .backup failed for $dbfile, copying raw file"
 				cp "$dbfile" "$dest_path"
 			fi
 		fi
