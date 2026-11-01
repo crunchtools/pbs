@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `systemd/lotor/*.service` run with `--pull=newer`. Nothing refreshed
+  `pbs:latest` on lotor, so a release never reached its backups; these one-shot
+  jobs cannot use auto-update, which could restart one mid-backup. Pull errors
+  are suppressed when a local image exists, so a Quay outage does not fail a run.
+
 ## [2.0.1] - 2026-10-28
 
 ### Fixed
