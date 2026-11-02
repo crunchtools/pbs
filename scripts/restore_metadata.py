@@ -14,15 +14,23 @@ import sys
 
 
 def entries(manifest):
+    """Yield (kind, mode, uid, gid, context, path, target) records as bytes.
+
+    The manifest is NUL-terminated records of tab-separated fields, read a
+    block at a time. Raises ValueError on a malformed or truncated manifest.
+    """
+    pending = b""
     with gzip.open(manifest, "rb") as stream:
-        records = stream.read().split(b"\0")
-    if records.pop() != b"":
+        while block := stream.read(1 << 20):
+            records = (pending + block).split(b"\0")
+            pending = records.pop()
+            for record in records:
+                fields = record.split(b"\t", 6)
+                if len(fields) != 7:
+                    raise ValueError(f"malformed manifest record: {record!r}")
+                yield fields
+    if pending:
         raise ValueError("manifest is truncated")
-    for record in records:
-        fields = record.split(b"\t", 6)
-        if len(fields) != 7:
-            raise ValueError(f"malformed manifest record: {record!r}")
-        yield fields
 
 
 def safe_parent(root, path, checked):
@@ -46,17 +54,19 @@ def apply_entry(root, fields, checked):
     if kind not in (b"d", b"f", b"l"):
         return True
     dest = os.path.join(safe_parent(root, path, checked), path.rsplit(b"/", 1)[-1])
-    if kind == b"d":
-        if not os.path.isdir(dest) or os.path.islink(dest):
-            os.mkdir(dest)
-    elif kind == b"l":
-        if os.path.islink(dest):
-            os.unlink(dest)
-        os.symlink(target, dest)
-    elif not os.path.lexists(dest):
-        return False
-    elif not stat.S_ISREG(os.lstat(dest).st_mode):
-        raise ValueError("expected a regular file")
+    match kind:
+        case b"d":
+            if not os.path.isdir(dest) or os.path.islink(dest):
+                os.mkdir(dest)
+        case b"l":
+            if os.path.islink(dest):
+                os.unlink(dest)
+            os.symlink(target, dest)
+        case _:
+            if not os.path.lexists(dest):
+                return False
+            if not stat.S_ISREG(os.lstat(dest).st_mode):
+                raise ValueError("expected a regular file")
     os.chown(dest, int(uid), int(gid), follow_symlinks=False)
     if kind != b"l":
         os.chmod(dest, int(mode, 8))
@@ -65,7 +75,8 @@ def apply_entry(root, fields, checked):
 
 def main():
     if len(sys.argv) != 3:
-        sys.exit(__doc__)
+        print(__doc__, file=sys.stderr)
+        return 2
     root = os.path.realpath(os.fsencode(sys.argv[2]))
     checked = set()
     missing = failed = 0
@@ -78,8 +89,8 @@ def main():
             print(f"{fields[5]!r}: {error}", file=sys.stderr)
     print(f"Files in the manifest but not restored: {missing}")
     print(f"Entries that could not be applied: {failed}")
-    sys.exit(1 if failed else 0)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -67,6 +67,25 @@ class RestoreMetadata(unittest.TestCase):
         result = self.run_manifest(record("d", "755", "a")[:-1])
         self.assertNotEqual(result.returncode, 0)
 
+    def test_malformed_record_fails(self):
+        result = self.run_manifest("d\t755\0")
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_continues_after_failed_entry(self):
+        result = self.run_manifest(
+            record("d", "755", "../escaped"), record("d", "755", "later")
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertTrue((self.root / "later").is_dir())
+        self.assertIn("could not be applied: 1", result.stdout)
+
+    def test_replaces_existing_symlink(self):
+        result = self.run_manifest(
+            record("l", "777", "link", "old"), record("l", "777", "link", "file")
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(os.readlink(self.root / "link"), "file")
+
 
 if __name__ == "__main__":
     unittest.main()
