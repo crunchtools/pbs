@@ -3,7 +3,7 @@ repos:
     rev: v0.8.6
     hooks:
       - id: ruff-check
-        stages: [pre-commit]
+        stages: [pre-commit, pre-merge-commit]
   - repo: local
     hooks:
       - id: gourmand
