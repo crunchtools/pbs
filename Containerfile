@@ -26,8 +26,8 @@ RUN microdnf install -y --nodocs \
         gzip \
     && microdnf clean all
 
-COPY pbs.sh /usr/local/bin/pbs.sh
-RUN chmod +x /usr/local/bin/pbs.sh
+COPY pbs.sh restore-metadata.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/pbs.sh /usr/local/bin/restore-metadata.sh
 
 ENTRYPOINT ["/usr/local/bin/pbs.sh"]
 CMD ["-B", "-m", "Files HomeDirectories", "-r", "Weekly-1"]
