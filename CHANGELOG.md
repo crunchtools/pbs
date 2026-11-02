@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-02
+
+### Added
+
+- `Servers` module archives host state to `_host/host-config.tar.gz` when
+  `/host` is mounted: `/etc` without `rclone.conf`, home directories without
+  `.local`, `.cache` and `work`, and `/var/lib/trentina-tunnel`. A tarball keeps
+  owners, modes and unit enablement symlinks. Found by the lotor backup audit
+  (RT #1546).
+- `systemd/lotor/ServerBackups-*.service`, with the `/host` mounts.
+
+### Fixed
+
+- A database whose container is stopped is archived as
+  `backups/<dir>-stopped.tar.gz` rather than skipped. The data directory is
+  excluded from the sync, so an idle dev site had no restorable database.
+
 ### Fixed
 
 - `systemd/lotor/*.service` run with `--pull=newer`. Nothing refreshed

@@ -1,0 +1,22 @@
+[Unit]
+Description=Monthly-2 server backup to pCloud
+After=ServerBackups-Monthly-1.service
+RefuseManualStart=no
+RefuseManualStop=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/podman run --rm \
+    --pull=newer \
+    --security-opt label=disable \
+    --name pbs-server-monthly-2 \
+    -v /etc/rclone.conf:/etc/rclone.conf:ro \
+    -v /srv:/srv:ro \
+    -v /etc:/host/etc:ro \
+    -v /var/home:/host/var/home:ro \
+    -v /var/lib/trentina-tunnel:/host/var/lib/trentina-tunnel:ro \
+    -v /run/podman/podman.sock:/run/podman/podman.sock \
+    --tmpfs /tmp:rw \
+    --network=host \
+    quay.io/crunchtools/pbs:latest \
+    -B -m Servers -r Monthly-2

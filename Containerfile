@@ -1,7 +1,7 @@
 FROM registry.access.redhat.com/ubi10/ubi-minimal
 
 LABEL name="pbs" \
-      version="2.0.1" \
+      version="2.1.0" \
       summary="Personal Backup System" \
       description="Containerized backup system using rclone and SQLite" \
       maintainer="crunchtools.com" \
@@ -22,6 +22,8 @@ RUN microdnf install -y --nodocs \
         openssh-clients \
         gnupg2 \
         podman-remote \
+        tar \
+        gzip \
     && microdnf clean all
 
 COPY pbs.sh /usr/local/bin/pbs.sh

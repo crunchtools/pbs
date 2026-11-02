@@ -41,6 +41,10 @@ The `systemd/lotor/` units are the exception: they run the `Files` module only,
 which syncs pCloud to pCloud and reads nothing from the host, so they mount
 `/etc/rclone.conf` and nothing else. They keep the same schedule.
 
+`systemd/lotor/ServerBackups-*` run the `Servers` module, scheduled by Hermes.
+They mount `/srv` and the podman socket, and `/etc`, `/var/home` and
+`/var/lib/trentina-tunnel` read-only under `/host` for the host config archive.
+
 | Rotation | Timer schedule |
 |----------|----------------|
 | `Weekly-1` | Fridays 06:00 |

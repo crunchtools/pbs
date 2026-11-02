@@ -1,0 +1,21 @@
+[Unit]
+Description=Weekly server backup to pCloud
+RefuseManualStart=no
+RefuseManualStop=no
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/podman run --rm \
+    --pull=newer \
+    --security-opt label=disable \
+    --name pbs-server-weekly \
+    -v /etc/rclone.conf:/etc/rclone.conf:ro \
+    -v /srv:/srv:ro \
+    -v /etc:/host/etc:ro \
+    -v /var/home:/host/var/home:ro \
+    -v /var/lib/trentina-tunnel:/host/var/lib/trentina-tunnel:ro \
+    -v /run/podman/podman.sock:/run/podman/podman.sock \
+    --tmpfs /tmp:rw \
+    --network=host \
+    quay.io/crunchtools/pbs:latest \
+    -B -m Servers -r Weekly-1
