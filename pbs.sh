@@ -291,6 +291,12 @@ backup_HomeDirectories() {
 
 		# Clean up staging directory
 		rm -rf "$staging"
+
+		# Sync what we could first, then fail so the scheduler sees the gap.
+		if [ "$archive_failed" -ne 0 ]; then
+			echo "Error: backup is missing an archive, see warnings above"
+			exit 1
+		fi
 	else
 		echo "Error: no rotation specified. Please select from one of: Weekly-1, Monthly-1, or Monthly-2"
 	fi
@@ -363,13 +369,15 @@ archive_stopped_database() {
 	if ! tar --numeric-owner -C "$(dirname "$dbdir")" -czf "$archive" "$(basename "$dbdir")"; then
 		echo "Warning: could not archive $dbdir"
 		rm -f "$archive"
+		return 1
 	fi
 }
 
 backup_host_config() {
 	# Host state /srv does not hold, mounted under /host by the lotor units.
 	# A tarball because rclone would drop owners, modes and the symlinks that
-	# record which units are enabled.
+	# record which units are enabled. Password hashes and private keys stay
+	# out: a restored host generates new ones.
 	local staging_dir="$1"
 
 	[ -d /host ] || return 0
@@ -378,12 +386,19 @@ backup_host_config() {
 	echo "Archiving host configuration"
 	if ! tar --numeric-owner -C /host -czf "$staging_dir/_host/host-config.tar.gz" \
 		--exclude="etc/rclone.conf" \
+		--exclude="etc/shadow*" \
+		--exclude="etc/gshadow*" \
+		--exclude="etc/ssh/ssh_host_*_key" \
+		--exclude="etc/cockpit/ws-certs.d/*.key" \
+		--exclude="etc/pki/tls/private" \
+		--exclude="var/home/*/.ssh/id_*" \
 		--exclude="var/home/*/.local" \
 		--exclude="var/home/*/.cache" \
 		--exclude="var/home/*/work" \
 		.; then
 		echo "Warning: could not archive host configuration"
 		rm -f "$staging_dir/_host/host-config.tar.gz"
+		return 1
 	fi
 }
 
@@ -405,7 +420,7 @@ dump_mariadb_databases() {
 				rm -f "$staging_dir/$svcname/backups/all-databases.sql"
 			fi
 		else
-			archive_stopped_database "$dbdir" "$staging_dir" "$svcname"
+			archive_stopped_database "$dbdir" "$staging_dir" "$svcname" || archive_failed=1
 		fi
 	done
 }
@@ -433,7 +448,7 @@ dump_postgresql_databases() {
 				fi
 			fi
 		else
-			archive_stopped_database "$dbdir" "$staging_dir" "$svcname"
+			archive_stopped_database "$dbdir" "$staging_dir" "$svcname" || archive_failed=1
 		fi
 	done
 }
@@ -448,6 +463,7 @@ backup_Servers() {
 		hostname=$(hostname -f)
 		staging="/tmp/staging-srv"
 		mkdir -p "$staging"
+		archive_failed=0
 
 		# Dump relational databases before sync
 		dump_mariadb_databases "$staging"
@@ -456,7 +472,7 @@ backup_Servers() {
 		# Stage SQLite databases for safe backup
 		backup_sqlite_databases "/srv" "$staging"
 
-		backup_host_config "$staging"
+		backup_host_config "$staging" || archive_failed=1
 
 		for rotation in $rotations
 		do
