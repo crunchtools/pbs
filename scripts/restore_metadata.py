@@ -3,14 +3,15 @@
 
 Creates missing directories and symlinks, then sets owners and modes. Runs on
 the restored host as root. Exits nonzero if any entry could not be applied.
-
-Usage: restore_metadata.py <srv-metadata.gz> <restored-srv-dir>
 """
 
+import argparse
 import gzip
 import os
 import stat
 import sys
+
+BLOCK_SIZE = 1 << 20
 
 
 def entries(manifest):
@@ -21,7 +22,7 @@ def entries(manifest):
     """
     pending = b""
     with gzip.open(manifest, "rb") as stream:
-        while block := stream.read(1 << 20):
+        while block := stream.read(BLOCK_SIZE):
             records = (pending + block).split(b"\0")
             pending = records.pop()
             for record in records:
@@ -74,13 +75,15 @@ def apply_entry(root, fields, checked):
 
 
 def main():
-    if len(sys.argv) != 3:
-        print(__doc__, file=sys.stderr)
-        return 2
-    root = os.path.realpath(os.fsencode(sys.argv[2]))
+    """Apply the manifest named on the command line. Returns the exit status."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("manifest")
+    parser.add_argument("root")
+    args = parser.parse_args()
+    root = os.path.realpath(os.fsencode(args.root))
     checked = set()
     missing = failed = 0
-    for fields in entries(sys.argv[1]):
+    for fields in entries(args.manifest):
         try:
             if not apply_entry(root, fields, checked):
                 missing += 1
