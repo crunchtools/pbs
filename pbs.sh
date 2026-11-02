@@ -135,7 +135,6 @@ backup_Files() {
 				started=$(date +%s)
 				/usr/bin/rclone sync --skip-links \
 				    	--human-readable \
-					--size-only \
 					--fast-list \
 					--checkers $rclone_checkers \
 					--transfers $rclone_transfers \
@@ -214,7 +213,6 @@ backup_HomeDirectories() {
 				# Sync home directory, excluding large regenerable content
 				/usr/bin/rclone sync --skip-links \
 					--human-readable \
-					--size-only \
 					--checkers $rclone_checkers \
 					--transfers $rclone_transfers \
 					--delete-excluded \
@@ -373,6 +371,24 @@ archive_stopped_database() {
 	fi
 }
 
+backup_srv_metadata() {
+	# pCloud keeps no owners, modes, symlinks or empty directories, and these
+	# syncs exclude some directories outright. Restoring /srv without this
+	# leaves services unable to start. scripts/restore_metadata.py applies it.
+	local staging_dir="$1"
+
+	mkdir -p "$staging_dir/_host"
+	echo "Recording /srv metadata"
+	find /srv/ -mindepth 1 -printf '%y\t%m\t%U\t%G\t%Z\t%P\t%l\0' \
+		| gzip > "$staging_dir/_host/srv-metadata.gz"
+	local status=("${PIPESTATUS[@]}")
+	if [ "${status[0]}" -ne 0 ] || [ "${status[1]}" -ne 0 ]; then
+		echo "Warning: could not record /srv metadata"
+		rm -f "$staging_dir/_host/srv-metadata.gz"
+		return 1
+	fi
+}
+
 backup_host_config() {
 	# Host state /srv does not hold, mounted under /host by the lotor units.
 	# A tarball because rclone would drop owners, modes and the symlinks that
@@ -473,6 +489,7 @@ backup_Servers() {
 		backup_sqlite_databases "/srv" "$staging"
 
 		backup_host_config "$staging" || archive_failed=1
+		backup_srv_metadata "$staging" || archive_failed=1
 
 		for rotation in $rotations
 		do
@@ -481,7 +498,7 @@ backup_Servers() {
 
 			/usr/bin/rclone sync --skip-links \
 				--human-readable \
-				--size-only \
+				--create-empty-src-dirs \
 				--checkers $rclone_checkers \
 				--transfers $rclone_transfers \
 				--delete-excluded \

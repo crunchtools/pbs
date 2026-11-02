@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-02
+
+### Fixed
+
+- Remove `--size-only` from every `rclone sync`. A changed file of the same
+  size was never uploaded, leaving stale files in the backups: RocksDB
+  `CURRENT`, TLS keys, WordPress code.
+- `Servers` keeps empty directories.
+
+### Added
+
+- `Servers` records owners, modes, symlinks and SELinux labels for `/srv` in
+  `_host/srv-metadata.gz`; `scripts/restore_metadata.py` applies them after a restore.
+
 ## [2.1.0] - 2026-11-02
 
 ### Added
