@@ -1,7 +1,7 @@
 FROM registry.access.redhat.com/ubi10/ubi-minimal
 
 LABEL name="pbs" \
-      version="2.1.0" \
+      version="2.2.0" \
       summary="Personal Backup System" \
       description="Containerized backup system using rclone and SQLite" \
       maintainer="crunchtools.com" \
@@ -26,8 +26,8 @@ RUN microdnf install -y --nodocs \
         gzip \
     && microdnf clean all
 
-COPY pbs.sh restore-metadata.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/pbs.sh /usr/local/bin/restore-metadata.sh
+COPY pbs.sh /usr/local/bin/pbs.sh
+RUN chmod +x /usr/local/bin/pbs.sh
 
 ENTRYPOINT ["/usr/local/bin/pbs.sh"]
 CMD ["-B", "-m", "Files HomeDirectories", "-r", "Weekly-1"]

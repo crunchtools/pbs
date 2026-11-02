@@ -374,7 +374,7 @@ archive_stopped_database() {
 backup_srv_metadata() {
 	# pCloud keeps no owners, modes, symlinks or empty directories, and these
 	# syncs exclude some directories outright. Restoring /srv without this
-	# leaves services unable to start. restore-metadata.sh applies it.
+	# leaves services unable to start. scripts/restore_metadata.py applies it.
 	local staging_dir="$1"
 
 	mkdir -p "$staging_dir/_host"

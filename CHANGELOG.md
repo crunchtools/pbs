@@ -18,7 +18,7 @@ All notable changes to this project are documented here. The format follows
 ### Added
 
 - `Servers` records owners, modes, symlinks and SELinux labels for `/srv` in
-  `_host/srv-metadata.gz`; `restore-metadata.sh` applies them after a restore.
+  `_host/srv-metadata.gz`; `scripts/restore_metadata.py` applies them after a restore.
 
 ## [2.1.0] - 2026-11-02
 
