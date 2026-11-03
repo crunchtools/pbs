@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-03
+
+### Changed
+
+- `Servers` backs up `.git` directories under `/srv`. `/srv` is itself a
+  repository, and checkouts under it hold history and remotes a restore cannot
+  rebuild; on the gloval restore they had to be copied from lotor by hand.
+- `scripts/restore_metadata.py` finishes with SELinux: it imports the tree's
+  `selinux-local/config/local.semanage` (booleans, ports, file-context rules)
+  when it differs from the live host, then runs `restorecon -R` over the tree.
+  Labels now come from those rules, not from what each file carried on the old
+  host; `container_file_t` is kept by restorecon. `--no-selinux` skips the step.
+
 ## [2.2.0] - 2026-11-02
 
 ### Fixed
