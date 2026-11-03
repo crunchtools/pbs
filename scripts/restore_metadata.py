@@ -84,6 +84,12 @@ def apply_entry(root, fields, checked):
 def apply_selinux(root, semanage, restorecon):
     """Import the tree's local SELinux export, then relabel the tree.
 
+    Args:
+        root: the restored tree, as an absolute bytes path (``os.fsencode``).
+        semanage: the semanage command as an argument list, e.g.
+            ``["/usr/sbin/semanage"]``.
+        restorecon: the restorecon command as an argument list.
+
     Returns True when both steps succeeded. The import is skipped when the
     live customizations already match the export: it rebuilds the policy.
     """
