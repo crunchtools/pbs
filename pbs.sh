@@ -375,6 +375,8 @@ backup_srv_metadata() {
 	# pCloud keeps no owners, modes, symlinks or empty directories, and these
 	# syncs exclude some directories outright. Restoring /srv without this
 	# leaves services unable to start. scripts/restore_metadata.py applies it.
+	# The SELinux column is a record only: the restore relabels from the
+	# rules in selinux-local/config/local.semanage instead.
 	local staging_dir="$1"
 
 	mkdir -p "$staging_dir/_host"
@@ -496,6 +498,9 @@ backup_Servers() {
 			dest="pcloud:/Backups/Servers/$hostname/$rotation"
 			echo "Backing up /srv to $dest"
 
+			# .git directories are kept: /srv is itself a repo, and checkouts
+			# under it hold history and remotes a restore cannot rebuild
+			# (they had to be copied from lotor by hand, RT #1546).
 			/usr/bin/rclone sync --skip-links \
 				--human-readable \
 				--create-empty-src-dirs \
@@ -511,7 +516,6 @@ backup_Servers() {
 				--exclude "*/data/logs/" \
 				--exclude "*/code/cpan/" \
 				--exclude "*/slots/" \
-				--exclude ".git/" \
 				--exclude "*/flask_session/" \
 				--exclude "*/__pycache__/" \
 				--exclude "*/node_modules/" \
