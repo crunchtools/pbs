@@ -117,7 +117,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("manifest")
     parser.add_argument("root")
-    parser.add_argument("--no-selinux", action="store_true", help="skip the SELinux import and relabel")
+    parser.add_argument(
+        "--no-selinux", action="store_true", help="skip the SELinux import and relabel"
+    )
     parser.add_argument("--semanage", default="/usr/sbin/semanage", help="semanage command")
     parser.add_argument("--restorecon", default="/usr/sbin/restorecon", help="restorecon command")
     args = parser.parse_args()

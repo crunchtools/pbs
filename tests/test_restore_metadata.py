@@ -74,7 +74,13 @@ class RestoreMetadata(unittest.TestCase):
         with gzip.open(manifest, "wb") as stream:
             stream.write(b"")
         return subprocess.run(
-            [sys.executable, str(SCRIPT), str(manifest), str(self.root), *self.selinux_stubs(**stub)],
+            [
+                sys.executable,
+                str(SCRIPT),
+                str(manifest),
+                str(self.root),
+                *self.selinux_stubs(**stub),
+            ],
             capture_output=True,
             text=True,
             check=False,
@@ -125,9 +131,7 @@ class RestoreMetadata(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
 
     def test_continues_after_failed_entry(self):
-        result = self.run_manifest(
-            record("d", "755", "../escaped"), record("d", "755", "later")
-        )
+        result = self.run_manifest(record("d", "755", "../escaped"), record("d", "755", "later"))
         self.assertEqual(result.returncode, 1)
         self.assertTrue((self.root / "later").is_dir())
         self.assertIn("could not be applied: 1", result.stdout)
