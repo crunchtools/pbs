@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-11-06
+
+### Fixed
+
+- `Files` no longer rotates `pcloud:/Projects`. It moved to
+  `pcloud:/Backups/Servers/breetai.dc2.crunchtools.com/Projects` on 2026-11-04
+  as a one-way backup, so the root folder is gone and Weekly-1 failed with
+  "directory not found". Existing `pcloud:/Backups/Projects` rotations are left
+  in place.
+
 ## [2.3.0] - 2026-11-03
 
 ### Changed
