@@ -6,6 +6,71 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-11-08
+
+### Fixed
+
+- **`usage()` exited 0 on an unrecognised option**, so an invocation pbs did not
+  understand reported success. Found on ColdCopy's first real run, in the worst
+  possible way: podman reused a local `pbs:latest` from 2026-10-06 instead of
+  pulling 2.6.0, that image had no ColdCopy module and did not know `-d`,
+  getopts fell through to `h|*`, usage printed, pbs exited 0 — and
+  `cold-copy.sh` wrote its success stamp and logged `ColdCopy finished clean`
+  over a run that copied nothing.
+
+  An unknown option now goes to `usage_error`, which prints the same text and
+  exits 2. `-h` still exits 0, because asking for help is not an error. This is
+  the general case, not a ColdCopy quirk: any caller newer than the image it
+  runs hit it, silently.
+
+- `cold-copy.sh` **pulls the image every run**. podman reuses a local image by
+  tag without consulting the registry, and a stale image is the failure that
+  looks most like a working backup.
+
+- `cold-copy.sh` **verifies the marker instead of trusting the exit code.**
+  ColdCopy rewrites its marker after every item, so a marker older than the run
+  means no item completed, whatever the container claimed. 2.6.0 refused three
+  different ways internally to report a success it had not earned, and that does
+  no good at all if the wrapper around it reports a clean backup anyway.
+
+- The re-fire stamp holds an **epoch with a one-hour window**, not a date. A
+  date was too coarse both ways: it blocked every deliberate re-run for the rest
+  of the day, and a bad run that stamped it shut the drive out until midnight. A
+  non-epoch value now reads as absent, so an old date-stamped file self-heals.
+
+- The marker check compares **pCloud's own timestamp before the run against its
+  own timestamp after**, rather than the marker against local time. The old form
+  needed 120s of slack for clock skew, and that slack was itself a hole: a run
+  that updated the marker and then died before stamping, retried inside the
+  window, passed on the *first* run's marker. There is now no slack, because
+  both sides of the comparison come from the same clock. Caught by Gatehouse
+  on #54.
+
+### Added
+
+- `tests/test-cold-copy.sh` and the `tests/test_cold_copy.py` wrapper that makes
+  `sdlc ci` run it — 23 cases over the guards above, with podman, rclone,
+  udisksctl, findmnt and hostname stubbed, so nothing touches pCloud, a real
+  drive or a container.
+
+  Every case is a way for a backup that copied nothing to report success, and
+  one of them is what actually happened. They were untested until Gatehouse
+  asked on #54, which was the right question: these guards are the whole reason
+  a human-triggered backup is safe to depend on, and a guard nobody tests is a
+  guard that quietly stops working. Pinned: exit 0 with no marker, exit 0 with a
+  marker that did not move, a marker a day old that did not move, a nonzero
+  container status, a legacy date-valued stamp, a malformed stamp, the window
+  boundary at 3599s and 3700s, `KEEP_MOUNTED=1`, `--release-only`, that a failed
+  run still locks the drive, and that `-h` exits 0 while an unknown option
+  exits 2.
+
+### Verified in passing
+
+The drive's unmount-and-re-lock works from a systemd **user** unit —
+`udisksctl unmount` and `udisksctl lock` both succeeded with no polkit prompt,
+which was the open question about whether the plaintext window could be closed
+without root.
+
 ## [2.6.0] - 2026-11-08
 
 ### Added

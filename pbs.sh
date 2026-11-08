@@ -35,7 +35,16 @@ init() {
 				m) modules="$OPTARG";;
 				r) rotations="$OPTARG";;
 				v) verbose=1;;
-                		h|*) main_function=usage;;
+				h) main_function=usage;;
+				# An unknown option is an error, not a help request. It
+				# used to land here too and usage() exited 0, so an
+				# invocation this pbs did not understand -- an older image
+				# run with a newer unit's flags -- reported success and
+				# anything wrapping it recorded a backup that never ran.
+				# Observed 2026-11-08: a stale pbs:latest given ColdCopy's
+				# -d printed usage, exited 0, and the caller stamped the run
+				# clean.
+                		*) main_function=usage_error;;
                 	esac
 		done
 
@@ -81,7 +90,15 @@ usage() {
 	echo    "    h    - Print this help/usage message"
 	echo    ""
 
-exit 0
+exit "${1:-0}"
+}
+
+# Same text, nonzero exit. -h asked a question and got an answer; an unknown
+# option means the caller and this script disagree about what pbs can do, and
+# that must never look like a successful run.
+usage_error() {
+	echo "Error: unrecognized option. This pbs does not understand the flags it was given."
+	usage 2
 }
 
 debug() {
