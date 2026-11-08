@@ -6,6 +6,55 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.6.2] - 2026-11-08
+
+### Fixed
+
+- **The cold copy was locking the drive out from under the person unlocking it**,
+  which looked exactly like a rejected passphrase. Found on real hardware, on
+  the first unlock after the drive moved to a USB 3 port.
+
+  `ColdCopy.path` triggers on the LUKS device node, which appears *before* udisks
+  has mounted the filesystem. The script found the drive unlocked-but-unmounted,
+  logged "nothing to do" and exited 0 — and then `ColdCopy.service`'s
+  unconditional `ExecStopPost` backstop locked the drive, destroying `dm-1` under
+  GNOME's in-flight mount:
+
+  ```
+  udisksd:     Unlocked device /dev/sda1 as /dev/dm-1
+  cold-copy:   ...is unlocked but not mounted; nothing to do
+  udisksd:     Locked device /dev/sda1 (was unlocked as /dev/dm-1)
+  gnome-shell: Unable to mount volume data: fsconfig() failed: Can't lookup blockdev
+  ```
+
+  Every manual unlock undid itself about a second later. Nothing was wrong with
+  the passphrase, the drive or the LUKS header.
+
+  Three changes, and the second is the one that matters:
+
+  - **It waits for the mount** (`MOUNT_WAIT`, 30s) instead of giving up in the
+    window udisks needs.
+  - **Only a run that claimed the drive may release it.** A claim file is taken
+    once a mount is in hand, and `--release-only` leaves an unclaimed drive
+    alone. A backstop that locks whatever it finds is not a backstop, it is a
+    second actor on the same device. It still releases a claimed drive, so the
+    plaintext window still closes when the script is killed outright.
+  - **The re-fire skip no longer locks the drive either.** The previous run
+    already locked it, so the only way that path sees it mounted is that someone
+    just unlocked it deliberately — and locking it back is fighting them.
+
+  This is the second time the `ExecStopPost` backstop has been wrong in the same
+  way. 2.6.1 made it respect `KEEP_MOUNTED`; it also needed to respect *whether
+  this run did anything at all*.
+
+### Added
+
+- Eight tests for the race, including a `findmnt` stub that reports nothing for
+  the first N calls and then answers, which is what udisks actually does. Also
+  made the suite order-independent: one run returned 30/1 unreproducibly before
+  each case cleared the claim file, and a suite whose result depends on case
+  order is not evidence of anything. 31 cases, five consecutive clean runs.
+
 ## [2.6.1] - 2026-11-08
 
 ### Fixed
