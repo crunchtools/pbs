@@ -1,0 +1,28 @@
+[Unit]
+Description=Cold copy of pCloud to the external drive (pbs ColdCopy)
+Documentation=https://github.com/crunchtools/pbs
+# Started by ColdCopy.path when the LUKS volume is unlocked, not by a timer.
+# See cold-copy.sh for why.
+
+[Service]
+Type=oneshot
+# The first pass is 733 GiB over USB and the pCloud API; Documents alone is
+# 627 GiB. systemd must not decide that is a hang.
+TimeoutStartSec=0
+ExecStart=%h/.local/bin/cold-copy
+# The script re-locks the drive from an EXIT trap, so a failure still closes the
+# plaintext window. This is the belt to that braces: if the script is killed
+# outright, systemd still tries.
+#
+# It calls back into the same script rather than inlining udisksctl, so the
+# release logic -- and KEEP_MOUNTED -- has one implementation. Inlined, this
+# locked the drive even with KEEP_MOUNTED=1, which made the documented escape
+# hatch silently useless through systemd.
+#
+# To browse the drive after a sync instead of having it re-locked:
+#   systemctl --user edit ColdCopy.service      # [Service] Environment=KEEP_MOUNTED=1
+# An Environment= here is seen by ExecStart and ExecStopPost alike. Setting it
+# only in a shell affects a by-hand run of cold-copy, not this unit.
+ExecStopPost=-%h/.local/bin/cold-copy --release-only
+Nice=10
+IOSchedulingClass=idle
