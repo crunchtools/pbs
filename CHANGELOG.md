@@ -6,6 +6,31 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.5.2] - 2026-11-08
+
+### Fixed
+
+- Correct the stated reason `*/data/containers/` was excluded in 2.5.0. That
+  release said the sync "went backwards ... because the runner builds while
+  rclone walks it". The exclusion is right and the measurements are right, but
+  the mechanism was not: this sync passes no `--fast-list`, so rclone
+  enumerates as it walks and the `total` in its stats line rises for as long as
+  discovery continues. A falling percentage is progressive discovery, not the
+  source outrunning the copy. The run after 2.5.1 showed the same shape at a
+  sixth of the scale — total 506 MiB to 1.7 GiB and 2,358 to 20,831 files in 24
+  minutes, while `/srv` grew about 1 MB/min, which would make those 18,473
+  files average 160 bytes each.
+
+  What stands unchanged: the run was still going after ten hours and was killed
+  twice before finishing, `*/data/containers/` really is 1,190,137 files and
+  49.5 GiB of regenerable podman store, excluding it cut the work by about six
+  times, and the live-write races are real — `error reading source directory`
+  on a vanished uv build tempdir, `source file is being updated` on files that
+  grew mid-upload. Only the explanation of the rising total was wrong, and it
+  was wrong in a code comment, where it would have sent the next reader after a
+  problem that is not there.
+
+
 ## [2.5.1] - 2026-11-08
 
 ### Fixed
