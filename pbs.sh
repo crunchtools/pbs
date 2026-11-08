@@ -304,8 +304,19 @@ backup_sqlite_databases() {
 	local source_dir="$1"
 	local staging_dir="$2"
 
-	# Find all .db files that are SQLite databases, skipping excluded directories
+	# Find all .db files that are SQLite databases, skipping excluded directories.
+	#
+	# INVARIANT: this scan must skip every tree the callers' rclone sync excludes.
+	# The overlay copy runs AFTER the sync, so anything staged from an excluded
+	# tree is put straight back at the destination and the exclude is a lie. That
+	# is what */data/containers/* is doing here: the list below was written for
+	# home directories, so the Servers scan walked into the sandboxes' nested
+	# podman storage and staged 337 of its 465 files (1,307 MB of 5,945) out of
+	# mypy caches in crunchtools-hook-cache, which 2.5.0 had just excluded from
+	# the sync and which had just been purged from Weekly-1 by hand. Add a sync
+	# exclude, add it here too.
 	find "$source_dir" -name "*.db" -type f \
+		-not -path "*/data/containers/*" \
 		-not -path "*/AutoSync/*" \
 		-not -path "*/Documents/*" \
 		-not -path "*/Downloads/*" \
