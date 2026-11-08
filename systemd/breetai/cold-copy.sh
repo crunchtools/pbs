@@ -93,13 +93,23 @@ if [ -z "$MOUNT" ]; then
 fi
 log "drive mounted at $MOUNT"
 
-# Records a COMPLETED run, not an attempted one. A .path unit can re-fire while
-# the device node is still present, and this keeps that from restarting a sync
-# that just finished -- while still letting an interrupted run resume, which is
-# the case that actually matters.
+# Records a COMPLETED run, as an epoch. Its only job is to stop a .path re-fire
+# from restarting a sync that just finished, and a re-fire happens within
+# seconds, so the window is an hour rather than a day.
+#
+# It held a date until pbs 2.6.1, which was too coarse in both directions: it
+# blocked every deliberate re-run for the rest of the day, and when a bad run
+# stamped it (see the marker check at the end) the drive was shut out until
+# midnight. A non-epoch value now reads as absent, so an old date-stamped file
+# self-heals into a run rather than a skip.
 STAMP="$MOUNT/.cold-copy-last-success"
-if [ -f "$STAMP" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$(date +%F)" ]; then
-    log "already completed today ($(date +%F)); releasing the drive"
+SKIP_WINDOW=${SKIP_WINDOW:-3600}
+last=$(cat "$STAMP" 2>/dev/null)
+case $last in
+    ''|*[!0-9]*) last=0 ;;
+esac
+if [ "$last" -gt 0 ] && [ $(( $(date +%s) - last )) -lt "$SKIP_WINDOW" ]; then
+    log "completed $(( ($(date +%s) - last) / 60 ))m ago, inside the ${SKIP_WINDOW}s re-fire window; releasing the drive"
     release_drive
     exit 0
 fi
@@ -111,6 +121,13 @@ if [ ! -r "$RCLONE_CONF" ]; then
     exit 1
 fi
 
+# Pull every run. podman reuses a local image by tag without checking the
+# registry, and on 2026-11-08 that meant a :latest from 2026-10-06 ran instead
+# of 2.6.0 -- an image with no ColdCopy module at all. A stale image is the one
+# failure that looks most like a working backup.
+log "pulling $IMAGE"
+podman pull -q "$IMAGE" || log "WARNING: pull failed, running whatever is local"
+
 # --security-opt label=disable, not :Z. udisks mounts with seclabel, so every
 # file on the drive carries a real SELinux label; :Z would relabel all ~762k of
 # them on every run. udisks 2.11.2 does not allow context= in its mount options,
@@ -118,6 +135,7 @@ fi
 # mount. Scott's own data on Scott's own drive: disabling the label check for
 # this one job is the cheaper trade.
 log "starting pbs ColdCopy"
+started=$(date +%s)
 podman run --rm \
     --name pbs-cold-copy \
     --security-opt label=disable \
@@ -129,11 +147,40 @@ podman run --rm \
     -B -m ColdCopy -d /data
 status=$?
 
-if [ $status -eq 0 ]; then
-    date +%F > "$STAMP"
-    log "ColdCopy finished clean"
-else
+if [ $status -ne 0 ]; then
     log "ColdCopy exited $status"
+    exit $status
 fi
 
-exit $status
+# AN EXIT CODE IS NOT EVIDENCE. This checks the outcome instead: ColdCopy
+# rewrites its marker after every item, so a marker older than this run means
+# no item completed, whatever the container's exit code claimed.
+#
+# This guard exists because the unguarded version was wrong on its first real
+# run. A stale pbs:latest did not recognise ColdCopy's -d, printed usage, exited
+# 0 -- usage() did that until pbs 2.6.1 -- and this script wrote the success
+# stamp and logged "ColdCopy finished clean" over a run that copied nothing.
+# That is the same failure backup_ColdCopy refuses three ways internally, and it
+# does no good there if the wrapper around it still reports a clean backup.
+marker="Backups/Rotations/ColdCopy.$(hostname -f)"
+marker_epoch=$(rclone lsjson --config "$RCLONE_CONF" "pcloud:$marker" 2>/dev/null \
+    | sed -n 's/.*"ModTime":"\([^"]*\)".*/\1/p' | head -1)
+marker_epoch=$([ -n "$marker_epoch" ] && date -d "$marker_epoch" +%s 2>/dev/null)
+
+if [ -z "$marker_epoch" ]; then
+    log "FATAL: ColdCopy exited 0 but wrote no marker at pcloud:$marker."
+    log "       Not recording this run. Check the image really carries the"
+    log "       ColdCopy module: podman inspect $IMAGE --format '{{.Config.Labels.version}}'"
+    exit 1
+fi
+# 120s of slack for clock skew between here and pCloud, not for a stale marker:
+# a marker from a previous run is minutes to weeks old, nowhere near this.
+if [ "$marker_epoch" -lt $((started - 120)) ]; then
+    log "FATAL: ColdCopy exited 0 but its marker is from $(date -d "@$marker_epoch")"
+    log "       and this run started $(date -d "@$started"). No item completed."
+    exit 1
+fi
+
+date +%s > "$STAMP"
+log "ColdCopy finished clean, marker confirmed at $(date -d "@$marker_epoch")"
+exit 0

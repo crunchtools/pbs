@@ -6,6 +6,45 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-11-08
+
+### Fixed
+
+- **`usage()` exited 0 on an unrecognised option**, so an invocation pbs did not
+  understand reported success. Found on ColdCopy's first real run, in the worst
+  possible way: podman reused a local `pbs:latest` from 2026-10-06 instead of
+  pulling 2.6.0, that image had no ColdCopy module and did not know `-d`,
+  getopts fell through to `h|*`, usage printed, pbs exited 0 — and
+  `cold-copy.sh` wrote its success stamp and logged `ColdCopy finished clean`
+  over a run that copied nothing.
+
+  An unknown option now goes to `usage_error`, which prints the same text and
+  exits 2. `-h` still exits 0, because asking for help is not an error. This is
+  the general case, not a ColdCopy quirk: any caller newer than the image it
+  runs hit it, silently.
+
+- `cold-copy.sh` **pulls the image every run**. podman reuses a local image by
+  tag without consulting the registry, and a stale image is the failure that
+  looks most like a working backup.
+
+- `cold-copy.sh` **verifies the marker instead of trusting the exit code.**
+  ColdCopy rewrites its marker after every item, so a marker older than the run
+  means no item completed, whatever the container claimed. 2.6.0 refused three
+  different ways internally to report a success it had not earned, and that does
+  no good at all if the wrapper around it reports a clean backup anyway.
+
+- The re-fire stamp holds an **epoch with a one-hour window**, not a date. A
+  date was too coarse both ways: it blocked every deliberate re-run for the rest
+  of the day, and a bad run that stamped it shut the drive out until midnight. A
+  non-epoch value now reads as absent, so an old date-stamped file self-heals.
+
+### Verified in passing
+
+The drive's unmount-and-re-lock works from a systemd **user** unit —
+`udisksctl unmount` and `udisksctl lock` both succeeded with no polkit prompt,
+which was the open question about whether the plaintext window could be closed
+without root.
+
 ## [2.6.0] - 2026-11-08
 
 ### Added
