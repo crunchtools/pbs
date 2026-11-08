@@ -479,37 +479,78 @@ backup_Servers() {
 	if [ $rotations = "Weekly-1" ] || [ $rotations = "Monthly-1" ] || [ $rotations = "Monthly-2" ]
 	then
 		hostname=$(hostname -f)
-		staging="/tmp/staging-srv"
-		mkdir -p "$staging"
+		# Two staging directories, split by whether the artifact also exists
+		# under /srv, because that decides which side of the sync it goes on.
+		#
+		#   staging_dest    nothing under /srv corresponds to it: the .sql
+		#                   dumps, the stopped-container archives, _host/*.
+		#                   Copied BEFORE the sync and excluded from it.
+		#   staging_overlay shares its paths with real /srv files: the clean
+		#                   SQLite copies. Copied AFTER the sync, so the clean
+		#                   copy is the one that survives.
+		#
+		# The dumps used to go up only after the sync, and the sync deleted the
+		# previous run's copies on its way through (--delete-excluded, and they
+		# have no source counterpart). So for the ten hours a Servers run takes,
+		# Weekly-1 held no database dumps at all, and a run that died in between
+		# left none until the next successful run. On 2026-11-08 a bootc update
+		# rebooted gloval through the run, which is exactly that, and Backup
+		# Freshness went CRITICAL on five missing dumps with nothing wrong at
+		# either end. Uploading them first costs a minute and takes the one
+		# thing this backup exists for off the critical path.
+		staging_dest="/tmp/staging-srv-dest"
+		staging_overlay="/tmp/staging-srv"
+		mkdir -p "$staging_dest" "$staging_overlay"
 		archive_failed=0
 
 		# Dump relational databases before sync
-		dump_mariadb_databases "$staging"
-		dump_postgresql_databases "$staging"
+		dump_mariadb_databases "$staging_dest"
+		dump_postgresql_databases "$staging_dest"
 
 		# Stage SQLite databases for safe backup
-		backup_sqlite_databases "/srv" "$staging"
+		backup_sqlite_databases "/srv" "$staging_overlay"
 
-		backup_host_config "$staging" || archive_failed=1
-		backup_srv_metadata "$staging" || archive_failed=1
+		backup_host_config "$staging_dest" || archive_failed=1
+		backup_srv_metadata "$staging_dest" || archive_failed=1
 
 		for rotation in $rotations
 		do
 			dest="pcloud:/Backups/Servers/$hostname/$rotation"
+
+			# First, and on its own: everything a restore cannot rebuild.
+			echo "Copying database dumps and host archives to $dest"
+			/usr/bin/rclone copy --skip-links \
+				--human-readable \
+				--checkers $rclone_checkers \
+				--transfers $rclone_transfers \
+				$rclone_stats \
+				--config /etc/rclone.conf \
+				"$staging_dest" "$dest"
+
 			echo "Backing up /srv to $dest"
 
 			# .git directories are kept: /srv is itself a repo, and checkouts
 			# under it hold history and remotes a restore cannot rebuild
 			# (they had to be copied from lotor by hand, RT #1546).
+			#
+			# The three staging_dest excludes keep the sync away from what the
+			# copy above just uploaded; without them plain sync deletes them as
+			# destination files with no source. --delete-excluded is gone for
+			# the same reason: it deletes precisely what is excluded, which is
+			# now the dumps. Nothing else at the destination matches the
+			# excludes below (checked 2026-11-08), but a NEW exclude from here
+			# on needs a deliberate one-off prune; the sync will not do it.
 			/usr/bin/rclone sync --skip-links \
 				--human-readable \
 				--create-empty-src-dirs \
 				--checkers $rclone_checkers \
 				--transfers $rclone_transfers \
-				--delete-excluded \
 				$rclone_stats \
 				--delete-during \
 				--config /etc/rclone.conf \
+				--exclude "/*/backups/all-databases.sql" \
+				--exclude "/*/backups/*-stopped.tar.gz" \
+				--exclude "/_host/**" \
 				--exclude "*/data/mariadb/" \
 				--exclude "*/data/pgdata/" \
 				--exclude "*/data/postgres/" \
@@ -525,20 +566,21 @@ backup_Servers() {
 				--exclude "*.db-journal" \
 				/srv "$dest"
 
-			# Overlay staged database dumps and SQLite copies
-			if [ -d "$staging" ]; then
-				echo "Copying staged database dumps to $dest"
+			# Overlay the staged SQLite copies: same paths as the raw files the
+			# sync just uploaded, so this has to be the last word.
+			if [ -n "$(ls -A "$staging_overlay" 2>/dev/null)" ]; then
+				echo "Copying staged SQLite databases to $dest"
 				/usr/bin/rclone copy --skip-links \
 					--human-readable \
 					--checkers $rclone_checkers \
 					--transfers $rclone_transfers \
 					--quiet \
 					--config /etc/rclone.conf \
-					"$staging" "$dest"
+					"$staging_overlay" "$dest"
 			fi
 		done
 
-		rm -rf "$staging"
+		rm -rf "$staging_dest" "$staging_overlay"
 	else
 		echo "Error: no rotation specified. Please select from one of: Weekly-1, Monthly-1, or Monthly-2"
 	fi

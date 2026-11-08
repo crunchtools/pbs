@@ -6,6 +6,41 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-11-08
+
+### Fixed
+
+- `Servers` uploads the database dumps, the stopped-container archives and
+  `_host/*` **before** the `/srv` sync instead of after it. They exist only in
+  the staging directory, so the sync deleted the previous run's copies on its
+  way through and only the final copy put new ones back: for the ten hours a
+  run takes, `Weekly-1` held no database dumps at all, and a run that died in
+  between left none until the next successful run. A bootc update rebooted
+  gloval through the Sunday run and Backup Freshness went CRITICAL on five
+  missing dumps with nothing wrong at either end.
+- Staging is split in two by whether the artifact also exists under `/srv`.
+  `/tmp/staging-srv-dest` holds what the destination alone carries and is
+  copied first; `/tmp/staging-srv` holds the clean SQLite copies, which share
+  their paths with real `/srv` files and so are still copied last, after the
+  sync, to be the surviving version.
+
+### Changed
+
+- The `Servers` sync excludes `/*/backups/all-databases.sql`,
+  `/*/backups/*-stopped.tar.gz` and `/_host/**`, and no longer passes
+  `--delete-excluded`. Both are needed to leave the early upload alone: plain
+  sync deletes a destination file with no source counterpart, and
+  `--delete-excluded` deletes exactly what the new excludes name. Nothing at
+  the destination matched the pre-existing excludes when this was checked, so
+  nothing is lost, but a new exclude from here on needs a deliberate one-off
+  prune rather than the sync. `Files` and `HomeDirectories` keep
+  `--delete-excluded`; neither has destination-only artifacts.
+- The `*-stopped.tar.gz` exclude also stops the sync re-uploading the copies the
+  gloval restore left under `/srv/*/backups/` (~605 MB, 2026-11-02, gitignored).
+  They are stale snapshots of databases that are dumped properly every run, and
+  the sync would otherwise overwrite the fresh archive uploaded above with one
+  of them. The residue in `/srv` is worth deleting separately.
+
 ## [2.3.1] - 2026-11-06
 
 ### Fixed
