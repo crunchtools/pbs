@@ -218,31 +218,45 @@ Documents"
 # Discover what is in the account right now: top level, plus one level into
 # Backups, because Backups mixes real data (Servers, BitWarden, WordPress) with
 # the rotation copies that cold_skip drops.
+#
+# Returns nonzero if either listing failed, and the listings are captured rather
+# than piped so that status is visible. A suppressed listing error is
+# indistinguishable from an empty account, and the caller would then copy
+# nothing and report success -- which is the one outcome a backup must never
+# produce. This is not hypothetical: the pCloud token on lotor was found revoked
+# on 2026-10-05 after rclone was authorized elsewhere, and every job failed.
 cold_discover() {
-	local d b
+	local top sub d b
 
-	/usr/bin/rclone lsf --dirs-only --config /etc/rclone.conf pcloud: 2>/dev/null |
+	top=$(/usr/bin/rclone lsf --dirs-only --config /etc/rclone.conf pcloud:) || return 1
+
 	while IFS= read -r d
 	do
 		d=${d%/}
+		[ -z "$d" ] && continue
 		if [ "$d" = "Backups" ]
 		then
-			/usr/bin/rclone lsf --dirs-only --config /etc/rclone.conf pcloud:Backups 2>/dev/null |
+			sub=$(/usr/bin/rclone lsf --dirs-only --config /etc/rclone.conf pcloud:Backups) || return 1
 			while IFS= read -r b
 			do
-				echo "Backups/${b%/}"
-			done
+				b=${b%/}
+				[ -n "$b" ] && echo "Backups/$b"
+			done <<< "$sub"
 		else
 			echo "$d"
 		fi
-	done
+	done <<< "$top"
 }
 
 # Discovered items, in priority order, with anything unrecognised at the end.
+# Nonzero if discovery failed, or if it succeeded and found nothing: a backup
+# source that has suddenly gone empty is never good news, and treating it as
+# "no work to do" would report a clean run over a vanished account.
 cold_items() {
 	local found item
 
-	found=$(cold_discover)
+	found=$(cold_discover) || return 1
+	[ -n "$found" ] || return 1
 
 	printf '%s\n' "$cold_priority" | while IFS= read -r item
 	do
@@ -289,7 +303,15 @@ backup_ColdCopy() {
 	# a `while read` on the right of a pipe runs in a subshell, which would throw
 	# away $failed and the marker body it accumulates.
 	local item_list="/tmp/cold-items.$$"
-	cold_items > "$item_list"
+	if ! cold_items > "$item_list"
+	then
+		echo "Error: could not list the pCloud account. Refusing to report success:"
+		echo "       an empty item list and a failed listing look identical, and a run"
+		echo "       that copies nothing must not be recorded as a completed backup."
+		echo "       Check the rclone token first -- see the Backups wiki page."
+		rm -f "$item_list"
+		return 1
+	fi
 
 	marker_body=""
 	while IFS= read -r item
@@ -867,13 +889,22 @@ verify_ColdCopy() {
 		return 1
 	fi
 
-	local item_list="/tmp/cold-verify.$$"
-	cold_items > "$item_list"
+	local item_list="/tmp/cold-verify.$$" failed=0 status
+
+	if ! cold_items > "$item_list"
+	then
+		echo "Error: could not list the pCloud account -- nothing to verify against"
+		rm -f "$item_list"
+		return 1
+	fi
 
 	# --checksum, not size-and-modtime. pCloud serves sha1, so this compares
 	# hashes on both sides without downloading anything, which is the only
 	# check that would have caught a drive quietly going bad -- the failure the
 	# retired micro-SD had for months.
+	#
+	# Every exit status is accumulated. A verify that always returns success is
+	# worse than no verify at all: it is the micro-SD's green light.
 	while IFS= read -r item
 	do
 		[ -z "$item" ] && continue
@@ -885,8 +916,16 @@ verify_ColdCopy() {
 			--config /etc/rclone.conf \
 			--checkers $rclone_checkers \
 			pcloud:"$item" "$cold_dest/pcloud/$item"
+		status=$?
+		if [ $status -ne 0 ]
+		then
+			echo "Error: rclone check exited $status for $item -- the cold copy does not match pCloud"
+			failed=1
+		fi
 	done < "$item_list"
 	rm -f "$item_list"
+
+	return $failed
 }
 
 verify_HomeDirectories() {

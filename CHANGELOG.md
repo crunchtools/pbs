@@ -44,10 +44,23 @@ All notable changes to this project are documented here. The format follows
   and deleted files move to a dated attic instead, and the module warns below
   10% free so the attic gets pruned before a sync fails for want of space.
 
-  **It refuses to run on a directory that is not a mount point.** A bind mount
-  that did not happen is indistinguishable from an empty directory, so the
-  failure mode without this check is writing 733 GiB into the container's own
-  filesystem and reporting success.
+  **Three ways it refuses to report a success it did not earn.** Every one of
+  these is the same failure in a different costume — a run that copied nothing
+  and said it was fine, which is how a backup rots unnoticed.
+
+  - *Not a mount point.* A bind mount that did not happen is indistinguishable
+    from an empty directory, so without this check the run writes 733 GiB into
+    the container's own filesystem and exits 0.
+  - *Discovery failed.* `cold_discover` captures the `rclone lsf` output instead
+    of piping it, so a listing error is visible rather than arriving as an empty
+    list. Not hypothetical: the pCloud token on lotor was found revoked
+    2026-10-05 after rclone was authorized elsewhere, and every job failed.
+  - *Discovery succeeded and found nothing.* A backup source that has suddenly
+    gone empty is never good news, and "no work to do" is the wrong reading.
+
+  `verify_ColdCopy` likewise accumulates every `rclone check` exit status and
+  returns failure if any item mismatched. A verify that always returns success
+  is worse than no verify: it is the micro-SD's green light.
 
   **One marker, rewritten after every item**, to
   `pcloud:/Backups/Rotations/ColdCopy.<fqdn>`, one line per item in the existing
@@ -62,6 +75,11 @@ All notable changes to this project are documented here. The format follows
 - `verify_ColdCopy`, using `rclone check --checksum`. pCloud serves sha1, so
   both sides are compared by hash without downloading anything. This is the
   check that would have caught the micro-SD going bad.
+
+  The `ExecStopPost` backstop calls `cold-copy --release-only` rather than
+  inlining `udisksctl`, so the release path — and `KEEP_MOUNTED` — has one
+  implementation. Inlined, it locked the drive even with `KEEP_MOUNTED=1`, which
+  made the documented escape hatch silently useless through systemd.
 
 - `-d <path>` for the ColdCopy destination inside the container (default
   `/data`).

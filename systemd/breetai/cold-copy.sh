@@ -72,6 +72,15 @@ release_drive() {
     fi
 }
 
+# ColdCopy.service's ExecStopPost backstop calls back in here rather than
+# inlining udisksctl, so KEEP_MOUNTED has exactly one implementation. Inlined,
+# the backstop locked the drive even when KEEP_MOUNTED=1 and the documented
+# escape hatch silently did nothing through systemd.
+if [ "${1:-}" = "--release-only" ]; then
+    release_drive
+    exit 0
+fi
+
 if [ ! -e "$DM" ]; then
     log "$DM does not exist -- drive locked or unplugged, nothing to do"
     exit 0
