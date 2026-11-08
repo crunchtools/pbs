@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-11-08
+
+### Fixed
+
+- `backup_sqlite_databases` skips `*/data/containers/*`. Its `-not -path` list
+  was written for home directories, so the `Servers` scan walked into the
+  sandboxes' nested podman storage and staged **337 of its 465 files**, 1,307 MB
+  of 5,945, out of the mypy caches in `crunchtools-hook-cache` — the very tree
+  2.5.0 had just excluded from the sync. Because the overlay copy runs *after*
+  the sync, those files would have been written straight back into `Weekly-1`,
+  making the 2.5.0 exclude a lie and undoing the one-off destination purge.
+  Caught before the first 2.5.0 run reached its overlay copy.
+- The function now carries the invariant it violated: this scan must skip every
+  tree the caller's sync excludes, because the overlay copy is the last word at
+  the destination. Add a sync exclude, add it here too.
+
 ## [2.5.0] - 2026-11-08
 
 ### Fixed
