@@ -6,6 +6,48 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-11-08
+
+### Fixed
+
+- The `Servers` sync no longer walks `*/data/containers/`. It did not converge:
+  on the 2026-11-08 run it went backwards, 93% to 92% over five hours, moving
+  0.61 GiB while the target grew 0.79 GiB, ETA swinging between 20m and 2h44m.
+  That directory is podman's blob cache and local image store for the CI runner
+  and the dev sandboxes, and it is written while rclone walks it, so the same
+  run logged `error reading source directory: directory not found` on a uv build
+  tempdir and `source file is being updated` on files that changed mid-upload.
+  A run that cannot finish is not a backup, and every extra hour is another
+  hour a reboot can land on it, which is what caused the 2.4.0 incident.
+
+### Removed from the backup
+
+- `*/data/containers/` — **1,190,137 files and 49.5 GiB** on gloval, across
+  `developer1-3` and `gha-runner-cached`, the only services that have one. It
+  holds `cache` and `storage`: overlay layers, overlay images, `db.sql`, locks,
+  and one named volume, `crunchtools-hook-cache`, a mypy/uv pre-commit cache.
+  All of it comes back by pulling the images again; none of it is state a
+  restore needs. The real state of those sandboxes is `data/state`
+  (developer1: 81,597 files, 3,138 MB), which is still backed up.
+- `*/data/state/.config/josui/matrix-sync` — a five-byte Matrix sync cursor,
+  rewritten constantly, and the only source of
+  `corrupted on transfer: md5 hashes differ`: it changes between rclone's read
+  and its verify. A restored client re-syncs.
+
+Because 2.4.0 dropped `--delete-excluded`, neither is pruned from the
+destination automatically. `Weekly-1` held 68,597 objects / 4.721 GiB of
+container storage for `gha-runner-cached` alone and was purged by hand once;
+`Monthly-1` and `Monthly-2` never had any.
+
+### Changed
+
+- `Servers` reports the sync's rclone exit status instead of discarding it, as
+  a warning rather than a failure. `data/audit/bridge-transcript-*.jsonl` is
+  append-only, so a session that is live while the backup runs makes rclone
+  exit nonzero on a run where nothing is wrong; failing there would cry wolf
+  every week. Discarding it was worse — a wholesale sync failure left no trace.
+  Those transcripts are audit records and are deliberately still backed up.
+
 ## [2.4.0] - 2026-11-08
 
 ### Fixed
