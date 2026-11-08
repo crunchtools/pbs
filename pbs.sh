@@ -555,14 +555,26 @@ backup_Servers() {
 			# */data/containers/ is podman's blob cache and local image store for
 			# the CI runner and the dev sandboxes: 1,190,137 files and 49.5 GiB on
 			# gloval, across developer1-3 and gha-runner-cached, which are the only
-			# services that have one. It is why this run did not converge -- it went
-			# BACKWARDS, 93% to 92% over five hours, moving 0.61 GiB while the
-			# target grew 0.79 GiB, because the runner builds while rclone walks it.
-			# The same run logged "error reading source directory" on a uv build
-			# tempdir that vanished mid-walk. Nothing in there survives a restore
-			# anyway: it is overlay layers plus one named volume,
-			# crunchtools-hook-cache, and both come back by pulling the images
-			# again. The real state of those sandboxes is data/state, which stays.
+			# services that have one. It is the bulk of the run. The 2026-11-08 run
+			# was still going after ten hours and was killed twice before it
+			# finished; excluding this cut the work by about six times.
+			#
+			# Do NOT read a falling percentage as the source outrunning the copy.
+			# This sync has no --fast-list, so rclone enumerates as it walks and the
+			# "total" in its stats line rises for as long as discovery continues:
+			# the run after this change went from 506 MiB to 1.7 GiB of total, and
+			# 2,358 to 20,831 files, in 24 minutes while /srv itself grew about
+			# 1 MB/min. 18,473 files in 24 minutes at that rate would average 160
+			# bytes each. It is discovery, not churn, and an earlier version of this
+			# comment had it wrong.
+			#
+			# The live-write races ARE real, just smaller: the same run logged
+			# "error reading source directory" on a uv build tempdir that vanished
+			# mid-walk, and "source file is being updated" on files that grew during
+			# their upload. Nothing in here survives a restore anyway: overlay layers
+			# plus one named volume, crunchtools-hook-cache, and both come back by
+			# pulling the images again. The real state of those sandboxes is
+			# data/state, which stays.
 			#
 			# matrix-sync is a five-byte Matrix sync cursor rewritten constantly; it
 			# was the only source of "corrupted on transfer: md5 hashes differ",
