@@ -42,6 +42,13 @@ DM=/dev/mapper/luks-$LUKS_UUID
 BACKING=/dev/disk/by-uuid/$LUKS_UUID
 IMAGE=${PBS_IMAGE:-quay.io/crunchtools/pbs:latest}
 RCLONE_CONF=${RCLONE_CONF:-$HOME/.config/rclone/rclone.conf}
+# The fleet name, NOT `hostname -f`. On this host hostname -f is the CSB name
+# (smccarty-thinkpadx1carbongen12.rmtusoh.csb), which changed when the laptop was
+# reinstalled on 2026-10-04 and will change again. The marker's filename is
+# derived from this, so a rename would orphan the old marker and leave Cold Copy
+# Freshness CRITICAL with nothing able to clear it. This also matches where
+# pcloud-sync already writes the Projects backup.
+COLD_HOST=${COLD_HOST:-breetai.dc2.crunchtools.com}
 # Set KEEP_MOUNTED=1 to browse the drive after the sync instead of re-locking.
 KEEP_MOUNTED=${KEEP_MOUNTED:-0}
 
@@ -188,7 +195,7 @@ podman pull -q "$IMAGE" || log "WARNING: pull failed, running whatever is local"
 # needed a slack window for clock skew, and that window was itself a hole: a run
 # that updated the marker and then died before stamping, retried inside the
 # window, would pass on the FIRST run's marker. Caught by Gatehouse on #54.
-marker="Backups/Rotations/ColdCopy.$(hostname -f)"
+marker="Backups/Rotations/ColdCopy.$COLD_HOST"
 marker_epoch() {
     local t
     t=$(rclone lsjson --config "$RCLONE_CONF" "pcloud:$marker" 2>/dev/null \
@@ -206,6 +213,7 @@ podman run --rm \
     -v "$MOUNT:/data" \
     --tmpfs /tmp:rw \
     --network=host \
+    -e COLD_HOST="$COLD_HOST" \
     "$IMAGE" \
     -B -m ColdCopy -d /data
 status=$?

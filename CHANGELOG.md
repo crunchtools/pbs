@@ -6,6 +6,38 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.6.3] - 2026-11-08
+
+### Fixed
+
+- **The marker was named after `hostname -f`, which on breetai is the CSB name**
+  — `smccarty-thinkpadx1carbongen12.rmtusoh.csb`. That name changed when the
+  laptop was reinstalled on 2026-10-04 and will change again. The marker's
+  filename is derived from it, so a rename leaves an orphaned marker that can
+  never be refreshed and a **Cold Copy Freshness CRITICAL that nothing can
+  clear**.
+
+  This is the exact trap `check_personal_backup_freshness.sh` documents for its
+  hard-coded directory list — walked into from the other direction, in the same
+  afternoon, after reading that warning.
+
+  `COLD_HOST` now names the host in the marker, defaulting to `hostname -f` so
+  gloval and lotor are unchanged (there it *is* the fleet name).
+  `systemd/breetai/ColdCopy.service` sets it to `breetai.dc2.crunchtools.com`,
+  matching where `pcloud-sync` already writes that host's Projects backup. The
+  wrapper passes it into the container, or `pbs.sh` would fall back to the
+  container's own hostname.
+
+  **Rolling this out requires deleting the old marker**
+  (`pcloud:Backups/Rotations/ColdCopy.<old CSB name>`), or both exist and the
+  stale one is the permanent CRITICAL described above. Renaming without that
+  cleanup causes the very failure this fixes.
+
+### Added
+
+- Three tests: that `COLD_HOST` names the marker, that `hostname -f` is not
+  consulted when it is set, and the unset fallback. 34 cases total.
+
 ## [2.6.2] - 2026-11-08
 
 ### Fixed
