@@ -1,0 +1,18 @@
+[Unit]
+Description=Cold copy of pCloud to the external drive (pbs ColdCopy)
+Documentation=https://github.com/crunchtools/pbs
+# Started by ColdCopy.path when the LUKS volume is unlocked, not by a timer.
+# See cold-copy.sh for why.
+
+[Service]
+Type=oneshot
+# The first pass is 733 GiB over USB and the pCloud API; Documents alone is
+# 627 GiB. systemd must not decide that is a hang.
+TimeoutStartSec=0
+ExecStart=%h/.local/bin/cold-copy
+# The script re-locks the drive from an EXIT trap, so a failure still closes the
+# plaintext window. This is the belt to that braces: if the script is killed
+# outright, systemd still tries.
+ExecStopPost=/usr/bin/sh -c 'udisksctl unmount -b /dev/mapper/luks-e692da8c-d6fe-4809-9f01-8f686ace1149 --no-user-interaction 2>/dev/null; udisksctl lock -b /dev/disk/by-uuid/e692da8c-d6fe-4809-9f01-8f686ace1149 --no-user-interaction 2>/dev/null; exit 0'
+Nice=10
+IOSchedulingClass=idle

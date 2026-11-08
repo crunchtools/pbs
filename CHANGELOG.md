@@ -6,6 +6,99 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-11-08
+
+### Added
+
+- `ColdCopy` module: copies pCloud to a local drive, which is the first copy of
+  any of this that lives outside the pCloud account.
+
+  **What was actually broken.** The personal "backup" was pCloud to pCloud —
+  `backup_Files` syncs `pcloud:/Documents` into
+  `pcloud:/Backups/Documents/<rotation>`. Same account, same provider, same
+  failure domain. It defends against deleting the live tree by accident and
+  nothing else, so **627.5 GiB of Documents had zero copies outside pCloud**,
+  and so did 11 of 15 server databases — `mcp-memory`, the memory graph, and
+  `trentina`, the gateway, among them. A 3-2-1 violation where much of the data
+  was at one copy on one provider. The 512 GB micro-SD that was supposed to be
+  the independent medium had been broken since at least 2026-11-02 and was
+  retired on 2026-11-07; it had no monitoring, which is why months passed
+  unnoticed (RT#1547).
+
+  **The item list is discovered, not declared.** `cold_discover` lists the
+  account and `cold_skip` drops what is a copy of something else already in it
+  (the rotation copies, the orphaned `Backups/Projects`, the marker folder,
+  trash). Everything else is copied. An include list would have been shorter and
+  wrong in the one way that matters: it silently drops whatever nobody
+  remembered to add, and that is by definition what nobody was thinking about.
+  The comment block in nagios-agent's `check_personal_backup_freshness.sh`
+  records the same lesson from the other direction — a hand-kept list that
+  drifted from `pbs.sh` left a marker that could never be refreshed and a
+  CRITICAL nobody could clear. `cold_priority` orders the known names
+  worst-loss-first and anything new is appended, so drift costs ordering, never
+  coverage. 733 GiB in ~762k files across 11 items today.
+
+  **`--backup-dir`, so this is a backup and not a mirror.** `rclone sync`
+  propagates deletions, so without it a bad delete or a ransomware pass in
+  pCloud would be reproduced faithfully onto the only independent copy. Changed
+  and deleted files move to a dated attic instead, and the module warns below
+  10% free so the attic gets pruned before a sync fails for want of space.
+
+  **It refuses to run on a directory that is not a mount point.** A bind mount
+  that did not happen is indistinguishable from an empty directory, so the
+  failure mode without this check is writing 733 GiB into the container's own
+  filesystem and reporting success.
+
+  **One marker, rewritten after every item**, to
+  `pcloud:/Backups/Rotations/ColdCopy.<fqdn>`, one line per item in the existing
+  `Files|` format. Rewritten rather than written once at the end because
+  Documents alone runs for hours: a run killed part way should show what it
+  managed, not look like it never ran. nagios-agent 8.6.0 reads these as **Cold
+  Copy Freshness**.
+
+  No `--fast-list` on `Backups/Servers`: ~603k files, and fast-list holds every
+  entry in memory at once. Same reason `backup_Servers` omits it (2.5.0/2.5.2).
+
+- `verify_ColdCopy`, using `rclone check --checksum`. pCloud serves sha1, so
+  both sides are compared by hash without downloading anything. This is the
+  check that would have caught the micro-SD going bad.
+
+- `-d <path>` for the ColdCopy destination inside the container (default
+  `/data`).
+
+- `systemd/breetai/`: `ColdCopy.path`, `ColdCopy.service` and `cold-copy.sh`,
+  as **user** units.
+
+  **Unlocking the drive is the trigger, and there is no timer.** breetai is a
+  Red Hat CSB: `falcon-sensor`, `fleet-osquery` with the XFTI YARA
+  content-scanning rules, and `csb-cron` all run as root. LUKS protects a drive
+  that has been stolen; it does nothing against root on the host that mounts it.
+  So the unlock mode cannot change *whether* that plaintext is readable, only
+  how long the window stays open — and a keyfile in `/etc/crypttab` would hold
+  it open for the whole dock session. Requiring the passphrase holds it open for
+  one sync, but only if the sync starts on its own, because a backup that waits
+  for someone to remember is the backup that was just retired. `ColdCopy.path`
+  watches the dm node, so it fires on unlock wherever udisks mounts it, and
+  re-arms when the service re-locks the drive. A timer was rejected: it would
+  fire on a locked drive, find nothing to do, and succeed — a check that passes
+  by accident.
+
+  `--security-opt label=disable` rather than `:Z`, because udisks mounts with
+  `seclabel` and `:Z` would relabel all ~762k files on every run; udisks 2.11.2
+  does not allow `context=` in its mount options, so a whole-filesystem context
+  mount is not available while udisks owns the mount.
+
+  The drive re-locks from an `EXIT` trap, with `ExecStopPost` as a backstop for
+  the script being killed outright. `KEEP_MOUNTED=1` leaves it mounted for
+  browsing. A stamp file records a *completed* run, so a `.path` re-fire does
+  not restart a sync that just finished while an interrupted one still resumes.
+
+### Note
+
+The pCloud-to-pCloud rotations stay. They defend against accidental deletion of
+the live tree, which a mirror cannot, and `--backup-dir` gives the cold copy its
+own cheaper version of that defence. Two mechanisms, two different threats.
+
 ## [2.5.2] - 2026-11-08
 
 ### Fixed

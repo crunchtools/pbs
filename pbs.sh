@@ -21,12 +21,17 @@ init() {
 	# systemd every redraw becomes a journal line.
 	rclone_stats="--stats 1m --stats-one-line --stats-log-level NOTICE"
 	markers="pcloud:/Backups/Rotations"
+	# ColdCopy only. The bind-mount point of the external drive inside the
+	# container, and the free-space floor below which the attic needs pruning.
+	cold_dest="/data"
+	cold_min_free_pct=10
 
-        while getopts "m:r:BVvh" options
+        while getopts "d:m:r:BVvh" options
 		do
                 	case $options in
                 		B) main_function=backup;;
                 		V) main_function=verify;;
+				d) cold_dest="$OPTARG";;
 				m) modules="$OPTARG";;
 				r) rotations="$OPTARG";;
 				v) verbose=1;;
@@ -71,6 +76,7 @@ usage() {
 	echo    "where standard options are:"
 	echo    "    B    - Backup all items"
 	echo    "    V    - Verify all items"
+	echo    "    d    - ColdCopy destination (default /data)"
 	echo    "    v    - Verbose mode: for debugging"
 	echo    "    h    - Print this help/usage message"
 	echo    ""
@@ -165,6 +171,189 @@ backup_Files() {
 	else
 		echo "Error: no rotation specied. Please select from one of: Weekly-1, Monthly-1, or Monthly-2"
 		failed=1
+	fi
+
+	return $failed
+}
+
+# Items that are a copy of something else already in pCloud, or state rather
+# than data. Everything NOT listed here gets copied to the cold drive.
+#
+# This is an EXCLUDE list on purpose. An include list drops whatever nobody
+# remembered to add, silently, and the thing it drops is by definition the thing
+# nobody was thinking about. Here a new pCloud folder is protected by default and
+# anything skipped is skipped deliberately, with a reason on the line.
+cold_skip() {
+	case "$1" in
+		# Rotation copies of the live tree, which is itself copied.
+		Backups/Documents|Backups/Autosync|Backups/Downloads) return 0;;
+		# Orphaned: pcloud:/Projects stopped existing 2026-11-04 when ~/Projects
+		# moved to the one-way backup under Backups/Servers/breetai.../Projects,
+		# which IS copied. These rotations can never be refreshed.
+		Backups/Projects) return 0;;
+		# The Nagios freshness markers, including this module's own. State.
+		Backups/Rotations) return 0;;
+		.Trash*) return 0;;
+	esac
+	return 1
+}
+
+# Known items, worst-loss-first. Tiny and irreplaceable before bulk; Documents
+# last because it is the only item with any other copy at all (the pCloud
+# rotations), so an interrupted run leaves the least-defended data covered.
+# Names here are a priority hint, not the list of what gets copied -- anything
+# discovered that is not named here is appended and still copied.
+cold_priority="Backups/BitWarden
+Backups/Acquacotta
+Backups/LucidCharts
+Downloads
+Backups/Samsung SM-A376B
+Backups/Servers
+Backups/trove
+Backups/HomeDirectories
+Autosync
+Backups/WordPress
+Documents"
+
+# Discover what is in the account right now: top level, plus one level into
+# Backups, because Backups mixes real data (Servers, BitWarden, WordPress) with
+# the rotation copies that cold_skip drops.
+cold_discover() {
+	local d b
+
+	/usr/bin/rclone lsf --dirs-only --config /etc/rclone.conf pcloud: 2>/dev/null |
+	while IFS= read -r d
+	do
+		d=${d%/}
+		if [ "$d" = "Backups" ]
+		then
+			/usr/bin/rclone lsf --dirs-only --config /etc/rclone.conf pcloud:Backups 2>/dev/null |
+			while IFS= read -r b
+			do
+				echo "Backups/${b%/}"
+			done
+		else
+			echo "$d"
+		fi
+	done
+}
+
+# Discovered items, in priority order, with anything unrecognised at the end.
+cold_items() {
+	local found item
+
+	found=$(cold_discover)
+
+	printf '%s\n' "$cold_priority" | while IFS= read -r item
+	do
+		cold_skip "$item" && continue
+		printf '%s\n' "$found" | grep -Fxq "$item" && echo "$item"
+	done
+
+	printf '%s\n' "$found" | while IFS= read -r item
+	do
+		[ -z "$item" ] && continue
+		cold_skip "$item" && continue
+		printf '%s\n' "$cold_priority" | grep -Fxq "$item" && continue
+		echo "$item"
+	done
+}
+
+backup_ColdCopy() {
+	echo
+	debug "Debug: copying pCloud to the cold drive at $cold_dest"
+	echo
+
+	local failed=0 item started finished status marker_body free_pct
+	local attic="$cold_dest/attic/$(date +%F)"
+	local hostname
+	hostname=$(hostname -f)
+
+	# A bind mount that did not happen looks exactly like an empty directory, so
+	# without this a locked or unplugged drive quietly writes 733 GiB into the
+	# container's own filesystem and reports success. Comparing device numbers
+	# with the parent needs only coreutils, unlike findmnt or mountpoint.
+	if [ ! -d "$cold_dest" ] || [ "$(stat -c %d "$cold_dest" 2>/dev/null)" = "$(stat -c %d "$cold_dest/.." 2>/dev/null)" ]
+	then
+		echo "Error: $cold_dest is not a mount point -- the drive is locked, unplugged, or not bind-mounted"
+		return 1
+	fi
+
+	if [ ! -w "$cold_dest" ]
+	then
+		echo "Error: $cold_dest is not writable"
+		return 1
+	fi
+
+	# Via a file, not a pipe: item names contain spaces ("Samsung SM-A376B"), and
+	# a `while read` on the right of a pipe runs in a subshell, which would throw
+	# away $failed and the marker body it accumulates.
+	local item_list="/tmp/cold-items.$$"
+	cold_items > "$item_list"
+
+	marker_body=""
+	while IFS= read -r item
+	do
+		[ -z "$item" ] && continue
+
+		echo "Synchronizing pcloud:$item to $cold_dest/pcloud/$item"
+		started=$(date +%s)
+
+		# --backup-dir is the difference between a backup and a mirror. Plain
+		# sync propagates deletions, so a bad delete or a ransomware pass in
+		# pCloud would be reproduced faithfully onto the only independent copy.
+		# Changed and deleted files move to a dated attic instead.
+		#
+		# No --fast-list on Backups/Servers: it is ~603k files and fast-list
+		# holds every entry in memory at once. backup_Servers omits it for the
+		# same reason (2.5.2).
+		if [ "$item" = "Backups/Servers" ]
+		then
+			/usr/bin/rclone sync --skip-links \
+				--human-readable \
+				--checkers $rclone_checkers \
+				--transfers $rclone_transfers \
+				$rclone_stats \
+				--config /etc/rclone.conf \
+				--backup-dir "$attic/$item" \
+				pcloud:"$item" "$cold_dest/pcloud/$item"
+		else
+			/usr/bin/rclone sync --skip-links \
+				--human-readable \
+				--fast-list \
+				--checkers $rclone_checkers \
+				--transfers $rclone_transfers \
+				$rclone_stats \
+				--config /etc/rclone.conf \
+				--backup-dir "$attic/$item" \
+				pcloud:"$item" "$cold_dest/pcloud/$item"
+		fi
+		status=$?
+		finished=$(date +%s)
+
+		if [ $status -ne 0 ]; then
+			echo "Error: rclone exited $status synchronizing $item to $cold_dest"
+			failed=1
+		fi
+
+		# Rewritten after every item, not once at the end: Documents alone runs
+		# for hours, and a run that is killed part way should still show what it
+		# managed rather than looking like it never ran.
+		marker_body="$marker_body
+ColdCopy|$item|$hostname|$started|$finished|$status"
+		printf '%s\n' "${marker_body#
+}" | \
+			/usr/bin/rclone rcat --config /etc/rclone.conf \
+			"$markers/ColdCopy.$hostname" || failed=1
+	done < "$item_list"
+	rm -f "$item_list"
+
+	# The attic only grows. Say so while there is still room to act, because the
+	# alternative is finding out when a sync fails for want of space.
+	free_pct=$(df -P "$cold_dest" | awk 'NR==2 {print 100 - $5 + 0}' | tr -d '%')
+	if [ -n "$free_pct" ] && [ "$free_pct" -lt "$cold_min_free_pct" ]
+	then
+		echo "Warning: $cold_dest is ${free_pct}% free (floor ${cold_min_free_pct}%). Prune $cold_dest/attic."
 	fi
 
 	return $failed
@@ -667,6 +856,37 @@ verify_Files() {
 			ls -lrt $backups/$server/$rotation
 		done
 	done
+}
+
+verify_ColdCopy() {
+	local item
+
+	if [ ! -d "$cold_dest" ] || [ "$(stat -c %d "$cold_dest" 2>/dev/null)" = "$(stat -c %d "$cold_dest/.." 2>/dev/null)" ]
+	then
+		echo "Error: $cold_dest is not a mount point -- nothing to verify"
+		return 1
+	fi
+
+	local item_list="/tmp/cold-verify.$$"
+	cold_items > "$item_list"
+
+	# --checksum, not size-and-modtime. pCloud serves sha1, so this compares
+	# hashes on both sides without downloading anything, which is the only
+	# check that would have caught a drive quietly going bad -- the failure the
+	# retired micro-SD had for months.
+	while IFS= read -r item
+	do
+		[ -z "$item" ] && continue
+		echo
+		echo_color "Verifying $item"
+		echo
+		echo_bold "rclone check --checksum pcloud:$item $cold_dest/pcloud/$item"
+		/usr/bin/rclone check --checksum \
+			--config /etc/rclone.conf \
+			--checkers $rclone_checkers \
+			pcloud:"$item" "$cold_dest/pcloud/$item"
+	done < "$item_list"
+	rm -f "$item_list"
 }
 
 verify_HomeDirectories() {
