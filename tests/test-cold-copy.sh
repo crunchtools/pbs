@@ -31,6 +31,8 @@ cat > "$STUBS/rclone" <<'STUB'
 #!/bin/bash
 n=$(( $(cat "$STUB_CALLS" 2>/dev/null || echo 0) + 1 ))
 echo "$n" > "$STUB_CALLS"
+# Record the marker path asked for, so the tests can assert WHICH marker.
+printf '%s\n' "${@: -1}" >> "$STUB_PATHS"
 t="${STUB_MARKER_MTIME:-}"
 if [ "$n" -ge 2 ] && [ -n "${STUB_MARKER_MTIME_AFTER:-}" ]; then
     t="$STUB_MARKER_MTIME_AFTER"
@@ -83,7 +85,7 @@ run() {
     # whose result depends on the order its cases ran in is not evidence of
     # anything, and one run of this file did come back 30/1 unreproducibly
     # before this line existed.
-    : > "$STUB_RELEASE"; rm -f "$STUB_RAN" "$STUB_CALLS" "$STUB_MNT_CALLS" "$CLAIM"
+    : > "$STUB_RELEASE"; rm -f "$STUB_RAN" "$STUB_CALLS" "$STUB_MNT_CALLS" "$CLAIM" "$STUB_PATHS"
     # The dm node must appear to exist, so point the script at a real path.
     out=$(PATH="$STUBS:$PATH" \
           RCLONE_CONF="$STUBS/rclone" \
@@ -99,6 +101,7 @@ export STUB_RELEASE="$STUBS/release.log"
 export STUB_RAN="$STUBS/ran"
 export STUB_CALLS="$STUBS/calls"
 export STUB_MNT_CALLS="$STUBS/mnt-calls"
+export STUB_PATHS="$STUBS/rclone-paths"
 # The claim file decides who may release the drive; keep it out of the real one.
 export XDG_RUNTIME_DIR="$STUBS"
 CLAIM="$STUBS/cold-copy.claimed"
@@ -249,6 +252,25 @@ grep -q 'udisksctl lock' "$STUB_RELEASE" \
     || { echo "  FAIL: --release-only did not lock the drive"; FAIL=$((FAIL + 1)); }
 [ -f "$STUB_RAN" ] && { echo "  FAIL: --release-only started a sync"; FAIL=$((FAIL + 1)); } \
     || { echo "  PASS: --release-only starts no sync"; PASS=$((PASS + 1)); }
+
+echo "=== cold-copy.sh: the marker is named for the FLEET host ==="
+# The marker's filename comes from COLD_HOST. On this host `hostname -f` is the
+# CSB name, which changed on the 2026-10-04 reinstall and will change again -- a
+# rename orphans the old marker and leaves Cold Copy Freshness CRITICAL with
+# nothing able to clear it. Same trap check_personal_backup_freshness.sh warns
+# about for its directory list.
+rm -f "$CLAIM" "$FAKE_MOUNT/.cold-copy-last-success"
+COLD_HOST=breetai.dc2.crunchtools.com STUB_PBS_RC=0 \
+    STUB_MARKER_MTIME="$(iso -86400)" STUB_MARKER_MTIME_AFTER="$(iso 0)" \
+    run "COLD_HOST names the marker" 0 "marker moved to"
+grep -q 'ColdCopy.breetai.dc2.crunchtools.com' "$STUB_PATHS" \
+    && { echo "  PASS: the marker is ColdCopy.breetai.dc2.crunchtools.com"; PASS=$((PASS + 1)); } \
+    || { echo "  FAIL: wrong marker path: $(cat "$STUB_PATHS" 2>/dev/null | tr '\n' ' ')"; FAIL=$((FAIL + 1)); }
+grep -q 'test.host' "$STUB_PATHS" \
+    && { echo "  FAIL: it used hostname -f despite COLD_HOST"; FAIL=$((FAIL + 1)); } \
+    || { echo "  PASS: hostname -f is not consulted when COLD_HOST is set"; PASS=$((PASS + 1)); }
+
+rm -f "$CLAIM" "$FAKE_MOUNT/.cold-copy-last-success"
 
 echo "=== pbs.sh: the CLI exit contract ==="
 # This is what let a stale image report success. -h is a question and answers 0;

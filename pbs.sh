@@ -302,8 +302,20 @@ backup_ColdCopy() {
 
 	local failed=0 item started finished status marker_body free_pct
 	local attic="$cold_dest/attic/$(date +%F)"
+
+	# COLD_HOST names this host in the marker, and must be STABLE, because the
+	# marker's name is derived from it: a host that renames itself leaves an
+	# orphaned marker that can never be refreshed and a CRITICAL nobody can
+	# clear. check_personal_backup_freshness.sh carries the same warning about
+	# its directory list.
+	#
+	# `hostname -f` is right on gloval and lotor, where it IS the fleet name. On
+	# breetai it is the CSB name -- smccarty-thinkpadx1carbongen12.rmtusoh.csb --
+	# which changed when the laptop was reinstalled on 2026-10-04 and will change
+	# again. That host's unit sets COLD_HOST=breetai.dc2.crunchtools.com, matching
+	# where pcloud-sync already writes its Projects backup.
 	local hostname
-	hostname=$(hostname -f)
+	hostname=${COLD_HOST:-$(hostname -f)}
 
 	# A bind mount that did not happen looks exactly like an empty directory, so
 	# without this a locked or unplugged drive quietly writes 733 GiB into the

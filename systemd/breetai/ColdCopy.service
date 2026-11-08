@@ -6,6 +6,10 @@ Documentation=https://github.com/crunchtools/pbs
 
 [Service]
 Type=oneshot
+# The fleet name, not this host's `hostname -f` (which is the CSB name and
+# changes on reinstall). The marker's filename comes from it, so a rename would
+# orphan the old marker and leave Cold Copy Freshness permanently CRITICAL.
+Environment=COLD_HOST=breetai.dc2.crunchtools.com
 # The first pass is 733 GiB over USB and the pCloud API; Documents alone is
 # 627 GiB. systemd must not decide that is a hang.
 TimeoutStartSec=0
