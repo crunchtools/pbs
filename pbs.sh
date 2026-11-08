@@ -249,14 +249,19 @@ cold_discover() {
 }
 
 # Discovered items, in priority order, with anything unrecognised at the end.
-# Nonzero if discovery failed, or if it succeeded and found nothing: a backup
-# source that has suddenly gone empty is never good news, and treating it as
-# "no work to do" would report a clean run over a vanished account.
+#
+# Two distinct failures, two exit codes, because they call for different
+# actions at 2am:
+#   1  the listing failed -- go look at the rclone token
+#   2  the listing succeeded and the account is empty -- go find out why
+# Both must stop the run. A backup source that has suddenly gone empty is never
+# good news, and reading it as "no work to do" would report a clean run over a
+# vanished account.
 cold_items() {
 	local found item
 
 	found=$(cold_discover) || return 1
-	[ -n "$found" ] || return 1
+	[ -n "$found" ] || return 2
 
 	printf '%s\n' "$cold_priority" | while IFS= read -r item
 	do
@@ -302,13 +307,21 @@ backup_ColdCopy() {
 	# Via a file, not a pipe: item names contain spaces ("Samsung SM-A376B"), and
 	# a `while read` on the right of a pipe runs in a subshell, which would throw
 	# away $failed and the marker body it accumulates.
-	local item_list="/tmp/cold-items.$$"
-	if ! cold_items > "$item_list"
+	local item_list="/tmp/cold-items.$$" discover_status
+	cold_items > "$item_list"
+	discover_status=$?
+	if [ $discover_status -ne 0 ]
 	then
-		echo "Error: could not list the pCloud account. Refusing to report success:"
-		echo "       an empty item list and a failed listing look identical, and a run"
-		echo "       that copies nothing must not be recorded as a completed backup."
-		echo "       Check the rclone token first -- see the Backups wiki page."
+		if [ $discover_status -eq 2 ]
+		then
+			echo "Error: pCloud answered, and the account has nothing to copy."
+			echo "       Not treating that as a clean run -- a backup source that has gone"
+			echo "       empty is never good news. Check the account itself, not the token."
+		else
+			echo "Error: could not list the pCloud account (rclone lsf failed)."
+			echo "       Check the rclone token first: it was found revoked on 2026-10-05"
+			echo "       after rclone was authorized elsewhere. See the Backups wiki page."
+		fi
 		rm -f "$item_list"
 		return 1
 	fi
