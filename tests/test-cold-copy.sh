@@ -53,10 +53,17 @@ echo "udisksctl $1" >> "$STUB_RELEASE"
 exit 0
 STUB
 
-# findmnt: answers with FAKE_MOUNT unless STUB_UNMOUNTED is set.
+# findmnt: answers with FAKE_MOUNT unless STUB_UNMOUNTED is set. With
+# STUB_MOUNT_AFTER_N set, it reports nothing for that many calls and then
+# answers -- which is udisks mounting a second or two after the unlock.
 cat > "$STUBS/findmnt" <<'STUB'
 #!/bin/bash
 [ -n "${STUB_UNMOUNTED:-}" ] && exit 1
+if [ -n "${STUB_MOUNT_AFTER_N:-}" ]; then
+    n=$(( $(cat "$STUB_MNT_CALLS" 2>/dev/null || echo 0) + 1 ))
+    echo "$n" > "$STUB_MNT_CALLS"
+    [ "$n" -le "$STUB_MOUNT_AFTER_N" ] && exit 1
+fi
 printf '%s\n' "$STUB_MOUNT"
 STUB
 
@@ -72,7 +79,11 @@ export STUB_MOUNT="$FAKE_MOUNT"
 # run <desc> <want_rc> <want_output_regex>
 run() {
     local desc="$1" want_rc="$2" want_out="$3" out rc
-    : > "$STUB_RELEASE"; rm -f "$STUB_RAN" "$STUB_CALLS"
+    # Every case starts from the same state, including the claim file. A suite
+    # whose result depends on the order its cases ran in is not evidence of
+    # anything, and one run of this file did come back 30/1 unreproducibly
+    # before this line existed.
+    : > "$STUB_RELEASE"; rm -f "$STUB_RAN" "$STUB_CALLS" "$STUB_MNT_CALLS" "$CLAIM"
     # The dm node must appear to exist, so point the script at a real path.
     out=$(PATH="$STUBS:$PATH" \
           RCLONE_CONF="$STUBS/rclone" \
@@ -87,6 +98,10 @@ run() {
 export STUB_RELEASE="$STUBS/release.log"
 export STUB_RAN="$STUBS/ran"
 export STUB_CALLS="$STUBS/calls"
+export STUB_MNT_CALLS="$STUBS/mnt-calls"
+# The claim file decides who may release the drive; keep it out of the real one.
+export XDG_RUNTIME_DIR="$STUBS"
+CLAIM="$STUBS/cold-copy.claimed"
 
 # cold-copy.sh guards the dm node's existence before anything else, and the real
 # UUID is baked in. Point it at a file that exists so the rest of the script runs.
@@ -165,6 +180,54 @@ STUB_PBS_RC=0 STUB_MARKER_MTIME="$(iso -86400)" STUB_MARKER_MTIME_AFTER="$(iso 0
     run "a malformed stamp reads as absent" 0 "marker moved to"
 
 rm -f "$FAKE_MOUNT/.cold-copy-last-success"
+
+echo "=== cold-copy.sh: the udisks race (2026-11-08, on real hardware) ==="
+# ColdCopy.path fires on the LUKS device node, which appears BEFORE udisks has
+# mounted the filesystem. The script used to exit 0 here and the unconditional
+# ExecStopPost backstop then locked the drive out from under GNOME's in-flight
+# mount, so every manual unlock undid itself about a second later and looked
+# like a failing passphrase. These four cases are that bug.
+rm -f "$CLAIM" "$FAKE_MOUNT/.cold-copy-last-success"
+STUB_MOUNT_AFTER_N=3 MOUNT_WAIT=10 STUB_PBS_RC=0 \
+    STUB_MARKER_MTIME="$(iso -86400)" STUB_MARKER_MTIME_AFTER="$(iso 0)" \
+    run "it waits for udisks to mount rather than giving up" 0 "marker moved to"
+
+# Nothing ever mounts it: leave the drive exactly as found, and above all do not
+# lock it -- a human may be mid-unlock.
+rm -f "$CLAIM"
+STUB_UNMOUNTED=1 MOUNT_WAIT=2 \
+    run "an unlocked-but-never-mounted drive is left alone" 0 "never took responsibility"
+grep -q 'udisksctl' "$STUB_RELEASE" \
+    && { echo "  FAIL: it locked a drive it never mounted"; FAIL=$((FAIL + 1)); } \
+    || { echo "  PASS: it does not lock a drive it never mounted"; PASS=$((PASS + 1)); }
+[ -f "$CLAIM" ] \
+    && { echo "  FAIL: it claimed a drive it never mounted"; FAIL=$((FAIL + 1)); } \
+    || { echo "  PASS: no claim taken without a mount"; PASS=$((PASS + 1)); }
+
+# The backstop on an unclaimed drive: this is the exact call ExecStopPost makes.
+rm -f "$CLAIM"; : > "$STUB_RELEASE"
+PATH="$STUBS:$PATH" bash "$SCRIPT" --release-only >/dev/null 2>&1
+grep -q 'udisksctl' "$STUB_RELEASE" \
+    && { echo "  FAIL: --release-only locked an unclaimed drive"; FAIL=$((FAIL + 1)); } \
+    || { echo "  PASS: --release-only leaves an unclaimed drive alone"; PASS=$((PASS + 1)); }
+
+# ...but it must still release one the run DID claim, or the plaintext window
+# stays open when the script is killed outright.
+: > "$CLAIM"; : > "$STUB_RELEASE"
+PATH="$STUBS:$PATH" bash "$SCRIPT" --release-only >/dev/null 2>&1
+grep -q 'udisksctl lock' "$STUB_RELEASE" \
+    && { echo "  PASS: --release-only still locks a claimed drive"; PASS=$((PASS + 1)); } \
+    || { echo "  FAIL: --release-only left a claimed drive unlocked"; FAIL=$((FAIL + 1)); }
+
+# A skip must not lock the drive either: the previous run already locked it, so
+# the only way this sees it mounted is a human unlocking it on purpose.
+rm -f "$CLAIM"; : > "$STUB_RELEASE"
+date +%s > "$FAKE_MOUNT/.cold-copy-last-success"
+STUB_PBS_RC=0 run "a re-fire skip leaves the drive mounted" 0 "leaving the drive mounted"
+grep -q 'udisksctl' "$STUB_RELEASE" \
+    && { echo "  FAIL: a skip locked the drive on the user"; FAIL=$((FAIL + 1)); } \
+    || { echo "  PASS: a skip does not lock the drive on the user"; PASS=$((PASS + 1)); }
+rm -f "$FAKE_MOUNT/.cold-copy-last-success" "$CLAIM"
 
 echo "=== cold-copy.sh: the drive is always released ==="
 STUB_PBS_RC=0 STUB_MARKER_MTIME="" run "a FATAL run still releases the drive" 1 "wrote no marker"

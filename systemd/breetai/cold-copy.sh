@@ -45,10 +45,39 @@ RCLONE_CONF=${RCLONE_CONF:-$HOME/.config/rclone/rclone.conf}
 # Set KEEP_MOUNTED=1 to browse the drive after the sync instead of re-locking.
 KEEP_MOUNTED=${KEEP_MOUNTED:-0}
 
+# Marks that THIS run took responsibility for the drive -- i.e. it found a mount
+# and went on to do work. Only a run that claimed the drive may release it.
+#
+# Without this, ColdCopy.service's unconditional ExecStopPost released a drive
+# the run had never mounted, and that lost a race with udisks every single time:
+# ColdCopy.path fires the moment the LUKS device node appears, which is BEFORE
+# udisks has mounted the filesystem. The script found it unlocked-but-unmounted,
+# exited 0, and then the backstop locked the drive out from under GNOME's
+# in-flight mount -- so every manual unlock undid itself about a second later
+# and looked like a failing passphrase:
+#   udisksd: Unlocked device /dev/sda1 as /dev/dm-1
+#   cold-copy: ...is unlocked but not mounted; nothing to do
+#   udisksd: Locked device /dev/sda1 (was unlocked as /dev/dm-1)
+#   gnome-shell: Unable to mount volume data: fsconfig() failed: Can't lookup blockdev
+CLAIM="${XDG_RUNTIME_DIR:-/tmp}/cold-copy.claimed"
+
 log() { echo "cold-copy: $*"; }
 
 mount_point() {
     findmnt -n -o TARGET --source "$DM" 2>/dev/null | head -1
+}
+
+# udisks mounts a second or two after the unlock, so waiting is the difference
+# between doing the job and racing the desktop for the drive.
+wait_for_mount() {
+    local waited=0 mp
+    while [ "$waited" -lt "${MOUNT_WAIT:-30}" ]; do
+        mp=$(mount_point)
+        [ -n "$mp" ] && { printf '%s' "$mp"; return 0; }
+        sleep 1
+        waited=$((waited + 1))
+    done
+    return 1
 }
 
 release_drive() {
@@ -70,14 +99,23 @@ release_drive() {
         udisksctl lock -b "$BACKING" --no-user-interaction \
             || log "WARNING: lock failed; the drive is still decrypted"
     fi
+    rm -f "$CLAIM"
 }
 
 # ColdCopy.service's ExecStopPost backstop calls back in here rather than
 # inlining udisksctl, so KEEP_MOUNTED has exactly one implementation. Inlined,
 # the backstop locked the drive even when KEEP_MOUNTED=1 and the documented
 # escape hatch silently did nothing through systemd.
+#
+# It releases ONLY a drive this run claimed. A backstop that locks whatever it
+# finds is not a backstop, it is a second actor on the same device -- which is
+# precisely how it kept undoing manual unlocks.
 if [ "${1:-}" = "--release-only" ]; then
-    release_drive
+    if [ -f "$CLAIM" ]; then
+        release_drive
+    else
+        log "--release-only: this run never claimed the drive, leaving it alone"
+    fi
     exit 0
 fi
 
@@ -86,11 +124,18 @@ if [ ! -e "$DM" ]; then
     exit 0
 fi
 
-MOUNT=$(mount_point)
+# Wait, rather than giving up: .path fires on the device node, and udisks mounts
+# shortly after. Exiting here is what let the backstop fight the desktop.
+MOUNT=$(wait_for_mount)
 if [ -z "$MOUNT" ]; then
-    log "$DM is unlocked but not mounted; nothing to do"
+    log "$DM is unlocked but nothing mounted it within ${MOUNT_WAIT:-30}s."
+    log "       Leaving the drive exactly as found -- not locking it, because"
+    log "       this run never took responsibility for it."
     exit 0
 fi
+
+# From here on this run owns the drive and is allowed to release it.
+: > "$CLAIM"
 log "drive mounted at $MOUNT"
 
 # Records a COMPLETED run, as an epoch. Its only job is to stop a .path re-fire
@@ -109,8 +154,12 @@ case $last in
     ''|*[!0-9]*) last=0 ;;
 esac
 if [ "$last" -gt 0 ] && [ $(( $(date +%s) - last )) -lt "$SKIP_WINDOW" ]; then
-    log "completed $(( ($(date +%s) - last) / 60 ))m ago, inside the ${SKIP_WINDOW}s re-fire window; releasing the drive"
-    release_drive
+    # Skip the sync and LEAVE THE DRIVE ALONE. This used to release it, which was
+    # the same mistake as the backstop: the previous run already locked the drive,
+    # so the only way this code sees it mounted is that a human just unlocked it
+    # on purpose. Locking it back is fighting them, not protecting them.
+    log "completed $(( ($(date +%s) - last) / 60 ))m ago, inside the ${SKIP_WINDOW}s re-fire window; skipping the sync and leaving the drive mounted"
+    rm -f "$CLAIM"
     exit 0
 fi
 
