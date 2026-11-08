@@ -540,6 +540,29 @@ backup_Servers() {
 			# now the dumps. Nothing else at the destination matches the
 			# excludes below (checked 2026-11-08), but a NEW exclude from here
 			# on needs a deliberate one-off prune; the sync will not do it.
+			#
+			# */data/containers/ is podman's blob cache and local image store for
+			# the CI runner and the dev sandboxes: 1,190,137 files and 49.5 GiB on
+			# gloval, across developer1-3 and gha-runner-cached, which are the only
+			# services that have one. It is why this run did not converge -- it went
+			# BACKWARDS, 93% to 92% over five hours, moving 0.61 GiB while the
+			# target grew 0.79 GiB, because the runner builds while rclone walks it.
+			# The same run logged "error reading source directory" on a uv build
+			# tempdir that vanished mid-walk. Nothing in there survives a restore
+			# anyway: it is overlay layers plus one named volume,
+			# crunchtools-hook-cache, and both come back by pulling the images
+			# again. The real state of those sandboxes is data/state, which stays.
+			#
+			# matrix-sync is a five-byte Matrix sync cursor rewritten constantly; it
+			# was the only source of "corrupted on transfer: md5 hashes differ",
+			# because it changes between rclone's read and its verify. A restored
+			# client just re-syncs.
+			#
+			# NOT excluded, on purpose: data/audit/bridge-transcript-*.jsonl. Those
+			# are audit records. They are append-only, so rclone reports "source
+			# file is being updated" for a session that is live while the backup
+			# runs, and copies them cleanly once it ends. That error is expected and
+			# self-clearing; it is not a reason to stop backing them up.
 			/usr/bin/rclone sync --skip-links \
 				--human-readable \
 				--create-empty-src-dirs \
@@ -551,6 +574,8 @@ backup_Servers() {
 				--exclude "/*/backups/all-databases.sql" \
 				--exclude "/*/backups/*-stopped.tar.gz" \
 				--exclude "/_host/**" \
+				--exclude "*/data/containers/" \
+				--exclude "*/data/state/.config/josui/matrix-sync" \
 				--exclude "*/data/mariadb/" \
 				--exclude "*/data/pgdata/" \
 				--exclude "*/data/postgres/" \
@@ -565,6 +590,15 @@ backup_Servers() {
 				--exclude "*.db-shm" \
 				--exclude "*.db-journal" \
 				/srv "$dest"
+			sync_status=$?
+
+			# Said, not raised: a live session's append-only transcript makes
+			# rclone exit nonzero on a run where nothing is wrong, so failing here
+			# would cry wolf every week. Discarding it silently was worse -- a
+			# wholesale sync failure left no trace at all.
+			if [ "$sync_status" -ne 0 ]; then
+				echo "Warning: rclone sync exited $sync_status syncing /srv to $dest, see errors above"
+			fi
 
 			# Overlay the staged SQLite copies: same paths as the raw files the
 			# sync just uploaded, so this has to be the last word.
