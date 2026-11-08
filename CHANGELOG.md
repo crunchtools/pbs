@@ -38,6 +38,32 @@ All notable changes to this project are documented here. The format follows
   of the day, and a bad run that stamped it shut the drive out until midnight. A
   non-epoch value now reads as absent, so an old date-stamped file self-heals.
 
+- The marker check compares **pCloud's own timestamp before the run against its
+  own timestamp after**, rather than the marker against local time. The old form
+  needed 120s of slack for clock skew, and that slack was itself a hole: a run
+  that updated the marker and then died before stamping, retried inside the
+  window, passed on the *first* run's marker. There is now no slack, because
+  both sides of the comparison come from the same clock. Caught by Gatehouse
+  on #54.
+
+### Added
+
+- `tests/test-cold-copy.sh` and the `tests/test_cold_copy.py` wrapper that makes
+  `sdlc ci` run it — 23 cases over the guards above, with podman, rclone,
+  udisksctl, findmnt and hostname stubbed, so nothing touches pCloud, a real
+  drive or a container.
+
+  Every case is a way for a backup that copied nothing to report success, and
+  one of them is what actually happened. They were untested until Gatehouse
+  asked on #54, which was the right question: these guards are the whole reason
+  a human-triggered backup is safe to depend on, and a guard nobody tests is a
+  guard that quietly stops working. Pinned: exit 0 with no marker, exit 0 with a
+  marker that did not move, a marker a day old that did not move, a nonzero
+  container status, a legacy date-valued stamp, a malformed stamp, the window
+  boundary at 3599s and 3700s, `KEEP_MOUNTED=1`, `--release-only`, that a failed
+  run still locks the drive, and that `-h` exits 0 while an unknown option
+  exits 2.
+
 ### Verified in passing
 
 The drive's unmount-and-re-lock works from a systemd **user** unit —

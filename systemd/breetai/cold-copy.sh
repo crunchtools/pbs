@@ -134,8 +134,22 @@ podman pull -q "$IMAGE" || log "WARNING: pull failed, running whatever is local"
 # so a whole-filesystem context mount is not available while udisks owns the
 # mount. Scott's own data on Scott's own drive: disabling the label check for
 # this one job is the cheaper trade.
+# Read the marker BEFORE the run, so the check at the end compares pCloud's own
+# timestamp against pCloud's own earlier timestamp. Comparing it to local time
+# needed a slack window for clock skew, and that window was itself a hole: a run
+# that updated the marker and then died before stamping, retried inside the
+# window, would pass on the FIRST run's marker. Caught by Gatehouse on #54.
+marker="Backups/Rotations/ColdCopy.$(hostname -f)"
+marker_epoch() {
+    local t
+    t=$(rclone lsjson --config "$RCLONE_CONF" "pcloud:$marker" 2>/dev/null \
+        | sed -n 's/.*"ModTime":"\([^"]*\)".*/\1/p' | head -1)
+    [ -n "$t" ] && date -d "$t" +%s 2>/dev/null
+}
+marker_before=$(marker_epoch)
+log "marker before this run: ${marker_before:-none}"
+
 log "starting pbs ColdCopy"
-started=$(date +%s)
 podman run --rm \
     --name pbs-cold-copy \
     --security-opt label=disable \
@@ -162,25 +176,23 @@ fi
 # stamp and logged "ColdCopy finished clean" over a run that copied nothing.
 # That is the same failure backup_ColdCopy refuses three ways internally, and it
 # does no good there if the wrapper around it still reports a clean backup.
-marker="Backups/Rotations/ColdCopy.$(hostname -f)"
-marker_epoch=$(rclone lsjson --config "$RCLONE_CONF" "pcloud:$marker" 2>/dev/null \
-    | sed -n 's/.*"ModTime":"\([^"]*\)".*/\1/p' | head -1)
-marker_epoch=$([ -n "$marker_epoch" ] && date -d "$marker_epoch" +%s 2>/dev/null)
+marker_after=$(marker_epoch)
 
-if [ -z "$marker_epoch" ]; then
+if [ -z "$marker_after" ]; then
     log "FATAL: ColdCopy exited 0 but wrote no marker at pcloud:$marker."
     log "       Not recording this run. Check the image really carries the"
     log "       ColdCopy module: podman inspect $IMAGE --format '{{.Config.Labels.version}}'"
     exit 1
 fi
-# 120s of slack for clock skew between here and pCloud, not for a stale marker:
-# a marker from a previous run is minutes to weeks old, nowhere near this.
-if [ "$marker_epoch" -lt $((started - 120)) ]; then
-    log "FATAL: ColdCopy exited 0 but its marker is from $(date -d "@$marker_epoch")"
-    log "       and this run started $(date -d "@$started"). No item completed."
+# The marker must have MOVED. No clock-skew slack, because both sides of this
+# comparison are pCloud's own timestamps -- which is the point of reading the
+# first one before the run rather than using local time as the baseline.
+if [ -n "$marker_before" ] && [ "$marker_after" -le "$marker_before" ]; then
+    log "FATAL: ColdCopy exited 0 but its marker did not move."
+    log "       Still $(date -d "@$marker_after"). No item completed."
     exit 1
 fi
 
 date +%s > "$STAMP"
-log "ColdCopy finished clean, marker confirmed at $(date -d "@$marker_epoch")"
+log "ColdCopy finished clean, marker moved to $(date -d "@$marker_after")"
 exit 0
