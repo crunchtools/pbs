@@ -324,7 +324,17 @@ echo "=== the rotation units: the inhibitor and the pre-start cleanup ==="
 # one rotation deleting another's container mid-run would be a far worse bug
 # than the wedge this fixes. The inhibitor's --mode is pinned too: block-weak
 # is waved through for root and would look identical in review.
-UNITS="$HERE/../systemd/lotor"
+#
+# A unit directory is named for the host that runs it, so this path moves when
+# the rotations move -- as they did from lotor to gloval (RT #1503). The count
+# is asserted first because a wrong path is the one way this whole section
+# reports nothing interesting: the loop body does fail on a literal glob, but
+# only once instead of eighteen times, and a missing unit would not show at all.
+UNITS="$HERE/../systemd/gloval"
+found=$(ls -1 "$UNITS"/*.service 2>/dev/null | wc -l)
+[ "$found" -eq 6 ] \
+    && { echo "  PASS: all six rotation units are in $(basename "$UNITS")/"; PASS=$((PASS + 1)); } \
+    || { echo "  FAIL: expected 6 rotation units in $UNITS, found $found"; FAIL=$((FAIL + 1)); }
 for u in "$UNITS"/*.service; do
     n=$(basename "$u" .service)
     name=$(sed -n 's/^ *--name \(.*\) \\$/\1/p' "$u")

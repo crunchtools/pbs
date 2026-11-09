@@ -6,6 +6,36 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **`systemd/lotor/` is now `systemd/gloval/`.** The six rotations have run on
+  gloval since the lotor migration (RT #1503); only the directory name still
+  said otherwise. A unit directory in this repo is named for the host that runs
+  it — that is what `systemd/breetai/` means, and it is the only thing that
+  tells a reader where to install a unit. Naming a decommissioned host sends
+  whoever next has to restore these rotations to the wrong machine, which is
+  the worst possible time to be reading a stale directory name.
+
+  Pure relocation: the six unit files are byte-identical to 2.7.2 and match what
+  is deployed on gloval. No image change, no unit behaviour change, so no
+  version bump.
+
+- References updated to follow: the unit-path assertions in
+  `tests/test-cold-copy.sh`, the `systemd/lotor/` precedent cited in
+  `gourmand-exceptions.toml` for shipping `cold-copy.sh` beside its units,
+  the `/host` mount comment in `pbs.sh`, and the Purpose and "Rotations and
+  Host Units" sections of `.specify/memory/constitution.md` (1.4.0), which now
+  state the naming rule rather than leaving it to be inferred from two
+  examples.
+
+### Added
+
+- One assertion that all six rotation units are present in the directory the
+  tests look in. The existing eighteen assertions do fail when that path is
+  wrong, but as a single failure on a literal glob rather than as "the units
+  are not there" — and a unit that went missing from a correct directory would
+  not have shown up at all. 61 cases total.
+
 ## [2.7.3] - 2026-11-09
 
 ### Fixed
