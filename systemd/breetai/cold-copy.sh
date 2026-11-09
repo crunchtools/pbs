@@ -170,6 +170,32 @@ if [ "$last" -gt 0 ] && [ $(( $(date +%s) - last )) -lt "$SKIP_WINDOW" ]; then
     exit 0
 fi
 
+# `podman run --rm` does not clean up when the wrapper is killed mid-run: the
+# container keeps going, detached, and the name stays taken. Every later run
+# then dies on "the container name is already in use" with podman's exit 125,
+# which is not transient -- it is permanent until someone removes that
+# container by hand. On 2026-11-08 a run was killed at 17:27, the orphan ran on
+# for three more hours, and Cold Copy Freshness sat CRITICAL with every retry
+# failing in eight seconds.
+#
+# Not --replace: the orphan may still be copying, and killing live work to
+# start the same work over is a poor trade. A cold copy already in flight is a
+# clean exit, not an error; only a dead container gets removed.
+#
+# Before the trap, like the other two decisions not to work, and dropping the
+# claim on the way out. release_drive does not consult $CLAIM -- only the
+# --release-only backstop does -- so an exit from below the trap would lock the
+# drive out from under the very container this is protecting.
+state=$(podman ps -a --filter name='^pbs-cold-copy$' --format '{{.State}}' 2>/dev/null)
+if [ "$state" = "running" ]; then
+    log "a cold copy is already running; leaving it and the drive alone"
+    rm -f "$CLAIM"
+    exit 0
+elif [ -n "$state" ]; then
+    log "removing the dead pbs-cold-copy container an earlier run left behind"
+    podman rm pbs-cold-copy >/dev/null || true
+fi
+
 trap release_drive EXIT
 
 if [ ! -r "$RCLONE_CONF" ]; then
