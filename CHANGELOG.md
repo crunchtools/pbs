@@ -6,6 +6,57 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.7.3] - 2026-11-09
+
+### Fixed
+
+- **Two perpetually-written trees were costing a full extra walk of `/srv`
+  every Servers run.** InfluxDB's write-ahead log is appended to continuously,
+  so rclone reports "source file is being updated" on it, and a single such
+  error fails the whole attempt — rclone then re-walks the entire tree for
+  attempt 2.
+
+  Measured on the 2026-11-09 run started by hand to verify RT #1566: attempt 1
+  failed with 4 errors at 01:57 UTC, attempt 2 succeeded at 02:08, and the run
+  finished in 24m21s. Roughly half of that was a re-count that moved no bytes.
+  A failed attempt also suppresses directory deletion ("not deleting
+  directories as there were IO errors"), so the destination keeps what the
+  source dropped and the following week's walk is longer still.
+
+  Excluding the WAL is also the more correct answer, not only the cheaper one:
+  a raw copy of a live WAL is torn, and InfluxDB replaying a torn WAL on
+  restore is worse than restoring without one. The compacted data beside it is
+  kept, which is what a restore rebuilds from; the cost is the last unflushed
+  window of metrics. Follows the precedent set for the constantly-rewritten
+  Matrix sync cursor rather than raising the error tolerance, which would have
+  masked real failures too.
+
+- **mypy caches are no longer synced or staged.** They sit under the dev
+  sandboxes' work trees and are build artifacts like the `__pycache__`
+  directories beside them, but their contents are `.db` files, so the `*.pyc`
+  exclude never covered them — and being `.db`, the SQLite staging pass picked
+  them up as well and logged "sqlite3 .backup failed, copying raw file" for
+  each one.
+
+### Added
+
+- Four static assertions over the Servers exclude list. The one that matters
+  most asserts the *absence* of a broadened pattern: excluding the whole
+  InfluxDB engine directory instead of just its WAL would silently drop the
+  compacted metrics a restore depends on, and would read as a tidy-up in
+  review. 64 cases total, all passing. rclone's own pattern-matching depth
+  semantics stay untested offline, as podman's do — they were verified against
+  rclone 1.75.2 by hand.
+
+### Known issue
+
+- Three InfluxDB WAL directories last written 2026-11-03 remain in Weekly-1 at
+  the destination. The new excludes will never refresh or remove them, and
+  `--delete-excluded` is deliberately absent, so they need a deliberate one-off
+  prune. A restore would otherwise be handed a stale WAL beside newer compacted
+  data. Recorded in `pbs.sh` beside the exclude list rather than deleted as
+  part of a release.
+
 ## [2.7.2] - 2026-11-09
 
 ### Fixed

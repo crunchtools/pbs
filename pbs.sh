@@ -801,9 +801,17 @@ backup_Servers() {
 			# copy above just uploaded; without them plain sync deletes them as
 			# destination files with no source. --delete-excluded is gone for
 			# the same reason: it deletes precisely what is excluded, which is
-			# now the dumps. Nothing else at the destination matches the
-			# excludes below (checked 2026-11-08), but a NEW exclude from here
-			# on needs a deliberate one-off prune; the sync will not do it.
+			# now the dumps. A NEW exclude from here on needs a deliberate
+			# one-off prune; the sync will not do it.
+			#
+			# OWED PRUNE, as of 2.7.3: data/engine/wal/ under
+			# influxdb.crunchtools.com in Weekly-1 holds three WAL directories
+			# last written 2026-11-03, and the two new excludes below will never
+			# refresh or remove them. This one is not merely untidy: a restore
+			# would hand InfluxDB a stale WAL beside newer compacted data, which
+			# is worse than handing it none. Prune it by hand, once. Left in
+			# place rather than deleted here because removing data from the
+			# backup destination is not something a release should do quietly.
 			#
 			# */data/containers/ is podman's blob cache and local image store for
 			# the CI runner and the dev sandboxes: 1,190,137 files and 49.5 GiB on
@@ -834,6 +842,31 @@ backup_Servers() {
 			# because it changes between rclone's read and its verify. A restored
 			# client just re-syncs.
 			#
+			# data/engine/wal/ is InfluxDB's write-ahead log, and it is the same
+			# problem one step worse. It is appended to continuously, so rclone
+			# reports "source file is being updated (size changed from X to Y)",
+			# and ONE such file fails the whole attempt: rclone then re-walks the
+			# entire tree for attempt 2. Measured on the 2026-11-09 03:45 run --
+			# attempt 1 failed with 4 errors at 01:57 UTC, attempt 2 succeeded at
+			# 02:08, so half of a 24-minute run was a re-count that moved no
+			# bytes. A failed attempt also suppresses directory deletion ("not
+			# deleting directories as there were IO errors"), so the destination
+			# keeps what the source dropped and next week's walk is longer.
+			# Excluding it is also the more correct answer, not just the cheaper
+			# one: a raw copy of a live WAL is torn, and InfluxDB replaying a torn
+			# WAL on restore is worse than restoring without one. The compacted
+			# data beside it (data/engine/data/) is kept, which is the part a
+			# restore actually rebuilds from; the cost is the last unflushed
+			# window of metrics.
+			#
+			# .mypy_cache/ is a type-checker cache under the dev sandboxes' work
+			# trees: a build artifact, like __pycache__ next to it. It needed its
+			# own line because its contents are .db files, so the *.pyc exclude
+			# never covered them, and being .db they were also picked up by the
+			# SQLite staging pass, which logged "sqlite3 .backup failed, copying
+			# raw file" for every one of them. Nothing in a mypy cache survives a
+			# restore in any useful sense; mypy rebuilds it.
+			#
 			# NOT excluded, on purpose: data/audit/bridge-transcript-*.jsonl. Those
 			# are audit records. They are append-only, so rclone reports "source
 			# file is being updated" for a session that is live while the backup
@@ -852,6 +885,8 @@ backup_Servers() {
 				--exclude "/_host/**" \
 				--exclude "*/data/containers/" \
 				--exclude "*/data/state/.config/josui/matrix-sync" \
+				--exclude "*/data/engine/wal/" \
+				--exclude "*/.mypy_cache/" \
 				--exclude "*/data/mariadb/" \
 				--exclude "*/data/pgdata/" \
 				--exclude "*/data/postgres/" \

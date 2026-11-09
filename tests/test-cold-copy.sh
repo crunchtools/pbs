@@ -348,6 +348,29 @@ dupes=$(sed -n 's/^ *--name \(.*\) \\$/\1/p' "$UNITS"/*.service | sort | uniq -d
     && { echo "  PASS: every rotation has its own container name"; PASS=$((PASS + 1)); } \
     || { echo "  FAIL: duplicate container names: $dupes"; FAIL=$((FAIL + 1)); }
 
+echo "=== the Servers sync: the perpetually-hot trees ==="
+# Static assertions on the exclude list, not on rclone's matching -- the depth
+# semantics of these patterns are rclone's and were verified against rclone
+# 1.75.2 by hand (a bare directory name matches at any depth, so */.mypy_cache/
+# catches one nested five levels down). What IS ours is which trees are on the
+# list, because a file that is always being written fails the whole attempt and
+# costs a full re-walk of /srv: measured 2026-11-09, attempt 1 failed with 4
+# errors and attempt 2 succeeded, so half a 24-minute run moved no bytes.
+excl() { # <desc> <pattern>
+    grep -qF -- "--exclude \"$2\"" "$PBS" \
+        && { echo "  PASS: $1"; PASS=$((PASS + 1)); } \
+        || { echo "  FAIL: $1 (no --exclude \"$2\")"; FAIL=$((FAIL + 1)); }
+}
+excl "InfluxDB's write-ahead log is not synced"  '*/data/engine/wal/'
+excl "mypy caches are not synced"                '*/.mypy_cache/'
+excl "podman's image store is not synced"        '*/data/containers/'
+# The guard that matters most: broadening the WAL pattern to the whole engine
+# directory would drop the compacted metrics a restore actually rebuilds from,
+# and would look like a tidy-up in review.
+grep -qF -- '--exclude "*/data/engine/"' "$PBS" \
+    && { echo "  FAIL: the whole InfluxDB engine is excluded, not just the WAL"; FAIL=$((FAIL + 1)); } \
+    || { echo "  PASS: InfluxDB's compacted data is still synced"; PASS=$((PASS + 1)); }
+
 echo "=== pbs.sh: the CLI exit contract ==="
 # This is what let a stale image report success. -h is a question and answers 0;
 # an unknown option means the caller and this pbs disagree, and must not be 0.
