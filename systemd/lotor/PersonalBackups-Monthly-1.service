@@ -5,6 +5,17 @@ RefuseManualStop=no
 
 [Service]
 Type=oneshot
+# `podman run --rm` does not clean up when the client is killed: the container
+# carries on and keeps the name, so the next run dies on "the container name is
+# already in use" with podman's exit 125 -- permanently, not transiently. Seen
+# on gloval on 2026-11-09 by stopping a rotation: the unit went to failed, the
+# inhibitor was released, and the container was still copying.
+#
+# `podman rm` without -f refuses a running container, and the leading `-` lets
+# that failure pass. So a dead leftover is cleared and the run proceeds, while a
+# rotation genuinely still in flight is never killed to restart the same work --
+# that case still fails on the name, which is loud but self-clearing.
+ExecStartPre=-/usr/bin/podman rm pbs-personal-monthly-1
 ExecStart=/usr/bin/systemd-inhibit \
     --what=shutdown \
     --mode=block \

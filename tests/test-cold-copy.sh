@@ -1,5 +1,6 @@
 #!/bin/bash
-# Offline tests for cold-copy.sh's guards and pbs.sh's CLI exit contract.
+# Offline tests for cold-copy.sh's guards, pbs.sh's CLI exit contract, and the
+# rotation units' shutdown inhibitor and pre-start cleanup.
 #
 # WHY THESE EXIST. Every case below is a way for a backup that copied nothing to
 # report success, and one of them actually happened on ColdCopy's first real run
@@ -314,6 +315,38 @@ grep -q 'udisksctl' "$STUB_RELEASE" \
     || { echo "  PASS: the claim is dropped on the way out"; PASS=$((PASS + 1)); }
 
 rm -f "$CLAIM" "$FAKE_MOUNT/.cold-copy-last-success"
+
+echo "=== the rotation units: the inhibitor and the pre-start cleanup ==="
+# These are static assertions on the unit files, not behaviour: podman's own
+# semantics (rm refuses a running container, the leading - swallows that) are
+# not ours to test offline. What IS ours, and what a copy-paste would break
+# silently, is that each unit cleans up ITS OWN container and nobody else's --
+# one rotation deleting another's container mid-run would be a far worse bug
+# than the wedge this fixes. The inhibitor's --mode is pinned too: block-weak
+# is waved through for root and would look identical in review.
+UNITS="$HERE/../systemd/lotor"
+for u in "$UNITS"/*.service; do
+    n=$(basename "$u" .service)
+    name=$(sed -n 's/^ *--name \(.*\) \\$/\1/p' "$u")
+    pre=$(sed -n 's/^ExecStartPre=-\/usr\/bin\/podman rm \(.*\)$/\1/p' "$u")
+    if [ -n "$name" ] && [ "$pre" = "$name" ]; then
+        echo "  PASS: $n cleans up its own container ($name)"; PASS=$((PASS + 1))
+    else
+        echo "  FAIL: $n cleans up '$pre' but runs '$name'"; FAIL=$((FAIL + 1))
+    fi
+    grep -q '^ExecStartPre=-/usr/bin/podman rm ' "$u" \
+        && { echo "  PASS: $n ignores a failed pre-start removal"; PASS=$((PASS + 1)); } \
+        || { echo "  FAIL: $n would fail the unit when rm refuses"; FAIL=$((FAIL + 1)); }
+    grep -qE -- '--mode=block([^-]|$)' "$u" \
+        && { echo "  PASS: $n holds a strong block inhibitor"; PASS=$((PASS + 1)); } \
+        || { echo "  FAIL: $n does not hold --mode=block"; FAIL=$((FAIL + 1)); }
+done
+# Six rotations, six distinct containers: a duplicate name means two rotations
+# share a container and the pre-start rm of one kills the other.
+dupes=$(sed -n 's/^ *--name \(.*\) \\$/\1/p' "$UNITS"/*.service | sort | uniq -d)
+[ -z "$dupes" ] \
+    && { echo "  PASS: every rotation has its own container name"; PASS=$((PASS + 1)); } \
+    || { echo "  FAIL: duplicate container names: $dupes"; FAIL=$((FAIL + 1)); }
 
 echo "=== pbs.sh: the CLI exit contract ==="
 # This is what let a stale image report success. -h is a question and answers 0;
