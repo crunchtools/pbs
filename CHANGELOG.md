@@ -6,6 +6,35 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.7.2] - 2026-11-09
+
+### Fixed
+
+- **The same orphaned-container wedge 2.7.1 fixed for the cold copy, in all six
+  rotations.** Each now carries
+  `ExecStartPre=-/usr/bin/podman rm <container>`.
+
+  Found by testing 2.7.0's new inhibitor on gloval rather than trusting it:
+  starting `PersonalBackups-Monthly-1` registered the lock correctly
+  (`pbs / shutdown / block / pCloud rotation Files/Monthly-1 in flight`), and
+  then `systemctl stop` left the unit `failed`, released the inhibitor, and
+  left the container **still copying**. The name stays taken, so the next run
+  would have died on podman's exit 125 until someone removed it by hand.
+
+  `podman rm` without `-f` refuses a running container and the leading `-`
+  lets that failure pass, so a dead leftover is cleared and the run proceeds,
+  while a rotation genuinely in flight is never killed to redo the same work.
+  That case still fails on the name — loud, but self-clearing once the
+  container exits, which is the difference between an alert and a wedge.
+
+### Known limitation
+
+- The inhibitor's lifetime is the podman **client's**, not the container's. In
+  the normal path they end together. After a `systemctl stop` that orphans the
+  container, the copy carries on with no lock held, so a reboot in that window
+  can still kill it. Closing that needs the lock held by something that outlives
+  the client, which is a larger change than this one.
+
 ## [2.7.1] - 2026-11-08
 
 ### Fixed
