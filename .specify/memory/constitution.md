@@ -1,8 +1,8 @@
 # pbs Constitution
 
-> **Version:** 1.3.0
+> **Version:** 1.4.0
 > **Ratified:** 2026-03-23
-> **Amended:** 2026-10-06
+> **Amended:** 2026-11-08
 > **Status:** Active
 > **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.31.0
 > **Profile:** Container Image
@@ -15,7 +15,7 @@ here.
 ## Purpose
 
 Containerized backup system that runs rclone-based backups of pCloud
-directories and home directories. On lotor, Hermes jobs start the static
+directories and home directories. On gloval, Hermes jobs start the static
 systemd services (no timers since 2026-10-16); elsewhere, systemd timers
 start them. Either way the unit runs `podman run`. A personal infrastructure
 tool, not a public service.
@@ -33,15 +33,19 @@ tool, not a public service.
 
 ## Rotations and Host Units
 
-The `systemd/` units are the host side of the contract. Each runs the image
-once with `--network=host`, a tmpfs `/tmp`, `/etc/rclone.conf` read-only and
-`/home` and `/var/home` read-only.
+The `systemd/` units are the host side of the contract. A unit directory is
+named for the host that runs it — `systemd/gloval/` for the six rotations,
+`systemd/breetai/` for Cold Copy — and the units at the top of `systemd/` are
+the timer-driven template for any other host. Each runs the image once with
+`--network=host`, a tmpfs `/tmp`, `/etc/rclone.conf` read-only and `/home` and
+`/var/home` read-only.
 
-The `systemd/lotor/` units are the exception: they run the `Files` module only,
-which syncs pCloud to pCloud and reads nothing from the host, so they mount
-`/etc/rclone.conf` and nothing else. They keep the same schedule.
+The `systemd/gloval/PersonalBackups-*` units are the exception: they run the
+`Files` module only, which syncs pCloud to pCloud and reads nothing from the
+host, so they mount `/etc/rclone.conf` and nothing else. They keep the same
+schedule.
 
-`systemd/lotor/ServerBackups-*` run the `Servers` module, scheduled by Hermes.
+`systemd/gloval/ServerBackups-*` run the `Servers` module, scheduled by Hermes.
 They mount `/srv` and the podman socket, and `/etc`, `/var/home` and
 `/var/lib/trentina-tunnel` read-only under `/host` for the host config archive.
 
@@ -73,3 +77,4 @@ interface: changing either is a MAJOR release, made together with that check.
 | 1.1.0 | 2026-10-02 | Manifest under constitution v1.18.0: fleet and profile restatement removed; image contents and rotation units kept |
 | 1.2.0 | 2026-10-04 | `systemd/lotor/` units added: Files module only, no host mounts beyond `rclone.conf` (RT #1503) |
 | 1.3.0 | 2026-10-06 | Rotation markers added as an interface to the nagios-agent check (#16) |
+| 1.4.0 | 2026-11-08 | `systemd/lotor/` refiled as `systemd/gloval/`: the six rotations have run on gloval since the lotor migration (RT #1503), and a unit directory is named for the host that runs it |

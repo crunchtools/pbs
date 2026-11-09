@@ -656,7 +656,7 @@ backup_srv_metadata() {
 }
 
 backup_host_config() {
-	# Host state /srv does not hold, mounted under /host by the lotor units.
+	# Host state /srv does not hold, mounted under /host by the gloval units.
 	# A tarball because rclone would drop owners, modes and the symlinks that
 	# record which units are enabled. Password hashes and private keys stay
 	# out: a restored host generates new ones.
