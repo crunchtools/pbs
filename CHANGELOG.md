@@ -27,6 +27,17 @@ All notable changes to this project are documented here. The format follows
   That case still fails on the name — loud, but self-clearing once the
   container exits, which is the difference between an alert and a wedge.
 
+### Added
+
+- Nineteen static assertions over the six rotation units, from a Gatehouse
+  finding on #59: each unit's pre-start `podman rm` names **its own**
+  container, the removal is `-`-prefixed so a refusal does not fail the unit,
+  the inhibitor is `--mode=block` and not `block-weak` (which reads the same in
+  review and is waved through for root), and no two rotations share a container
+  name. A copy-paste in those names would have one rotation deleting another's
+  container mid-run, which is worse than the wedge this release fixes.
+  Behaviour is podman's and stays untested offline. 60 cases total.
+
 ### Known limitation
 
 - The inhibitor's lifetime is the podman **client's**, not the container's. In
