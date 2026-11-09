@@ -6,6 +6,42 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.7.1] - 2026-11-08
+
+### Fixed
+
+- **An orphaned container name wedged the cold copy permanently.** `podman run
+  --rm` does not clean up when the wrapper is killed mid-run: the container
+  carries on, detached, and keeps the `pbs-cold-copy` name. Every run after it
+  died on "the container name is already in use" with podman's exit 125 — not a
+  transient failure, a permanent one, until someone removed that container by
+  hand.
+
+  Found at 00:45 on 2026-11-09 while clearing an acknowledged **Cold Copy
+  Freshness CRITICAL** that had been red since 22:56 UTC. A run was killed at
+  17:27, its container ran on for three more hours, and each retry failed in
+  eight seconds — so the check was right, the copy was stuck at 5 of 11 items,
+  and the acknowledgement was hiding it.
+
+  `cold-copy` now looks for that container before starting. A **running** one
+  means a cold copy is already in flight: it logs, drops its claim and exits 0,
+  leaving both the container and the drive alone. Only a **dead** one is
+  removed. Not `--replace`, which would kill live work to start the same work
+  over.
+
+  The check sits above `trap release_drive EXIT`, with the other two decisions
+  not to work, and it matters: `release_drive` does not consult the claim file —
+  only the `--release-only` backstop does — so exiting from below the trap
+  would lock the drive out from under the very container being protected. That
+  is the 2.6.2 bug from the other direction.
+
+### Added
+
+- Seven cases for the orphan: a dead container is removed and the run proceeds;
+  a running one is not killed, not removed, starts no second sync, keeps the
+  drive mounted and hands back its claim. The podman stub now answers `ps` and
+  records `rm`. 41 cases total.
+
 ## [2.7.0] - 2026-11-08
 
 ### Added

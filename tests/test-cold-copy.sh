@@ -42,9 +42,16 @@ printf '[{"Path":"ColdCopy.test.host","ModTime":"%s"}]\n' "$t"
 STUB
 
 # podman: pull is a no-op; run exits STUB_PBS_RC, which is the container's status.
+# `ps` reports STUB_CTR_STATE, which is how an orphaned pbs-cold-copy container
+# left by a killed run is simulated; empty means no such container. `rm` is
+# recorded rather than performed.
 cat > "$STUBS/podman" <<'STUB'
 #!/bin/bash
-[ "${1:-}" = "pull" ] && exit 0
+case "${1:-}" in
+    pull) exit 0 ;;
+    ps)   printf '%s\n' "${STUB_CTR_STATE:-}"; exit 0 ;;
+    rm)   echo "rm ${2:-}" >> "$STUB_CTR_RM"; exit 0 ;;
+esac
 echo "ran" > "$STUB_RAN"
 exit "${STUB_PBS_RC:-0}"
 STUB
@@ -85,7 +92,7 @@ run() {
     # whose result depends on the order its cases ran in is not evidence of
     # anything, and one run of this file did come back 30/1 unreproducibly
     # before this line existed.
-    : > "$STUB_RELEASE"; rm -f "$STUB_RAN" "$STUB_CALLS" "$STUB_MNT_CALLS" "$CLAIM" "$STUB_PATHS"
+    : > "$STUB_RELEASE"; rm -f "$STUB_RAN" "$STUB_CALLS" "$STUB_MNT_CALLS" "$CLAIM" "$STUB_PATHS" "$STUB_CTR_RM"
     # The dm node must appear to exist, so point the script at a real path.
     out=$(PATH="$STUBS:$PATH" \
           RCLONE_CONF="$STUBS/rclone" \
@@ -102,6 +109,7 @@ export STUB_RAN="$STUBS/ran"
 export STUB_CALLS="$STUBS/calls"
 export STUB_MNT_CALLS="$STUBS/mnt-calls"
 export STUB_PATHS="$STUBS/rclone-paths"
+export STUB_CTR_RM="$STUBS/container-rm"
 # The claim file decides who may release the drive; keep it out of the real one.
 export XDG_RUNTIME_DIR="$STUBS"
 CLAIM="$STUBS/cold-copy.claimed"
@@ -269,6 +277,41 @@ grep -q 'ColdCopy.breetai.dc2.crunchtools.com' "$STUB_PATHS" \
 grep -q 'test.host' "$STUB_PATHS" \
     && { echo "  FAIL: it used hostname -f despite COLD_HOST"; FAIL=$((FAIL + 1)); } \
     || { echo "  PASS: hostname -f is not consulted when COLD_HOST is set"; PASS=$((PASS + 1)); }
+
+rm -f "$CLAIM" "$FAKE_MOUNT/.cold-copy-last-success"
+
+echo "=== cold-copy.sh: the orphaned container (2026-11-08) ==="
+# `podman run --rm` leaves the name taken when the wrapper is killed mid-run, so
+# every later run died on podman's exit 125 -- permanently, not transiently.
+# Cold Copy Freshness stayed CRITICAL while each retry failed in eight seconds.
+
+# A dead orphan is removed and the run proceeds.
+rm -f "$CLAIM" "$FAKE_MOUNT/.cold-copy-last-success"
+STUB_CTR_STATE=exited STUB_PBS_RC=0 \
+    STUB_MARKER_MTIME="$(iso -86400)" STUB_MARKER_MTIME_AFTER="$(iso 0)" \
+    run "a dead orphan is removed rather than fatal" 0 "marker moved to"
+grep -q 'rm pbs-cold-copy' "$STUB_CTR_RM" 2>/dev/null \
+    && { echo "  PASS: the dead container was removed"; PASS=$((PASS + 1)); } \
+    || { echo "  FAIL: the dead container was left to block the next run"; FAIL=$((FAIL + 1)); }
+
+# A running orphan is left to finish, and the drive is left alone with it: this
+# exits from above the trap, because release_drive does not consult $CLAIM and
+# would otherwise lock the drive out from under that very container.
+rm -f "$CLAIM" "$FAKE_MOUNT/.cold-copy-last-success"
+STUB_CTR_STATE=running STUB_PBS_RC=0 \
+    run "a running cold copy is left alone, not killed" 0 "already running"
+[ -f "$STUB_RAN" ] \
+    && { echo "  FAIL: it started a second sync over a running one"; FAIL=$((FAIL + 1)); } \
+    || { echo "  PASS: no second sync started"; PASS=$((PASS + 1)); }
+grep -q 'rm pbs-cold-copy' "$STUB_CTR_RM" 2>/dev/null \
+    && { echo "  FAIL: it removed a container that was still copying"; FAIL=$((FAIL + 1)); } \
+    || { echo "  PASS: a running container is not removed"; PASS=$((PASS + 1)); }
+grep -q 'udisksctl' "$STUB_RELEASE" \
+    && { echo "  FAIL: it locked the drive out from under a running copy"; FAIL=$((FAIL + 1)); } \
+    || { echo "  PASS: the drive is left mounted for the running copy"; PASS=$((PASS + 1)); }
+[ -f "$CLAIM" ] \
+    && { echo "  FAIL: it kept a claim it had already handed back"; FAIL=$((FAIL + 1)); } \
+    || { echo "  PASS: the claim is dropped on the way out"; PASS=$((PASS + 1)); }
 
 rm -f "$CLAIM" "$FAKE_MOUNT/.cold-copy-last-success"
 
