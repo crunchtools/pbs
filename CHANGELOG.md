@@ -6,6 +6,38 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-11-08
+
+### Added
+
+- **Every rotation now holds a block shutdown inhibitor while it runs.** All six
+  units wrap `podman run` in `systemd-inhibit --what=shutdown --mode=block
+  --who=pbs`, so a reboot requested while a rotation is in flight is refused
+  rather than granted (RT #1594).
+
+  On 2026-11-08 at 03:30, `bootc upgrade --apply` rebooted gloval and SIGKILLed
+  `ServerBackups-Weekly-1` at 93%, 36 minutes from the end of a ten-hour
+  transfer. Nothing coordinated the two, and the weekly rotation is the only
+  copy eight of the fifteen server databases have (RT #1547). The run retried
+  on its own and nothing was lost that night, but a ten-hour window against an
+  update path that reboots unattended collides again by arithmetic.
+
+  The lock is taken on the host, around the container, not inside it: logind
+  lives on the host and the lock has to outlive nothing but the run itself.
+  `--mode=block` is load-bearing — logind waves `block-weak` through for root
+  unless the caller explicitly asks for the check, and rejects a strong block
+  outright whatever the caller's uid or TTY. The guard is deliberately
+  caller-agnostic, which is what makes it work against a reboot nobody has yet
+  traced to a scheduler.
+
+  Consequence worth knowing before it surprises someone: a deliberate reboot
+  during a rotation is now refused too. `systemctl reboot -i` overrides it, and
+  `systemd-inhibit --list` names the holder and the rotation.
+
+  The matching half, which turns that refusal into a deferral rather than a
+  skipped update, ships in `rhel10-bootc-server` as a drop-in and a retry
+  timer; the two are useless apart.
+
 ## [2.6.3] - 2026-11-08
 
 ### Fixed

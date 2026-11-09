@@ -6,7 +6,12 @@ RefuseManualStop=no
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/podman run --rm \
+ExecStart=/usr/bin/systemd-inhibit \
+    --what=shutdown \
+    --mode=block \
+    --who=pbs \
+    --why="pCloud rotation Servers/Monthly-1 in flight" \
+    /usr/bin/podman run --rm \
     --pull=newer \
     --security-opt label=disable \
     --name pbs-server-monthly-1 \

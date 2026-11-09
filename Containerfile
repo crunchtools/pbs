@@ -1,7 +1,7 @@
 FROM registry.access.redhat.com/ubi10/ubi-minimal
 
 LABEL name="pbs" \
-      version="2.6.3" \
+      version="2.7.0" \
       summary="Personal Backup System" \
       description="Containerized backup system using rclone and SQLite" \
       maintainer="crunchtools.com" \
