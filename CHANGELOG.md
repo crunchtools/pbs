@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.7.4] - 2026-11-11
+
 ### Changed
 
 - **`systemd/lotor/` is now `systemd/gloval/`.** The six rotations have run on
