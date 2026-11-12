@@ -4,7 +4,7 @@
 > **Ratified:** 2026-03-23
 > **Amended:** 2026-11-08
 > **Status:** Active
-> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.39.1
+> **Inherits:** [crunchtools/constitution](https://github.com/crunchtools/constitution) v1.40.0
 > **Profile:** Container Image
 
 This file holds what is specific to pbs (Personal Backup System). The fleet
