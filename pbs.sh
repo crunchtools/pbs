@@ -935,10 +935,14 @@ backup_Lastpass() {
 }
 
 verify() {
+	# Every module's result counts. The loop used to return only the last
+	# module's status, so -V over several modules could fail early and exit 0.
+	local i failed=0
 	for i in $modules
 	do
-		verify_$i
+		verify_$i || failed=1
 	done
+	return $failed
 }
 
 verify_Files() {

@@ -1,0 +1,50 @@
+[Unit]
+Description=Yearly refresh of the offline copy of pCloud on the shelf drive (pbs ColdCopy)
+Documentation=https://github.com/crunchtools/pbs
+# The 4 TB USB drive lives unplugged; once a year it is plugged into Exedore and
+# this runs (josui-skills annual offline-copy-refresh.sh, or by hand). It was a
+# hand procedure in host-config.txt: a dropped ssh session mid-copy left the
+# timer stopped and the drive unlocked and mounted. As a unit, ExecStopPost
+# re-locks the drive and restarts the timer however the run ends.
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# A full copy of the account; hours.
+TimeoutStartSec=0
+Nice=10
+IOSchedulingClass=idle
+Environment=SHELF_DEV=/dev/disk/by-uuid/e692da8c-d6fe-4809-9f01-8f686ace1149
+ExecStartPre=/usr/bin/test -e ${SHELF_DEV}
+# Timer off first, then the check: the other order leaves a window where the
+# timer fires between them. If the check fails, ExecStopPost restarts the timer.
+ExecStartPre=/usr/bin/systemctl stop ColdCopy.timer
+ExecStartPre=/usr/bin/sh -c '! systemctl is-active -q ColdCopy.service ColdVerify.service'
+# Slot 1 is Exedore's TPM (no PCRs), so this opens without the passphrase.
+ExecStartPre=/usr/sbin/cryptsetup open --token-only ${SHELF_DEV} shelf
+ExecStartPre=/usr/bin/mkdir -p /var/mnt/shelf
+ExecStartPre=/usr/bin/mount /dev/mapper/shelf /var/mnt/shelf
+ExecStartPre=-/usr/bin/podman rm pbs-cold-copy
+# Same COLD_HOST as the monthly run on purpose: the marker this refreshes is the
+# monthly one, so Cold Copy Freshness never judges the yearly copy.
+ExecStart=/usr/bin/systemd-inhibit \
+    --what=shutdown \
+    --mode=block \
+    --who=pbs \
+    --why="Offline copy in flight" \
+    /usr/bin/podman run --rm \
+    --pull=newer \
+    --security-opt label=disable \
+    --name pbs-cold-copy \
+    -v /etc/rclone.conf:/etc/rclone.conf:ro \
+    -v /var/mnt/shelf:/data \
+    --tmpfs /tmp:rw \
+    --network=host \
+    -e COLD_HOST=exedore.dc2.crunchtools.com \
+    quay.io/crunchtools/pbs:latest \
+    -B -m ColdCopy -d /data
+# Always, success or failure, in this order: unmount, re-lock, timer back on.
+ExecStopPost=-/usr/bin/umount /var/mnt/shelf
+ExecStopPost=-/usr/sbin/cryptsetup close shelf
+ExecStopPost=/usr/bin/systemctl start ColdCopy.timer

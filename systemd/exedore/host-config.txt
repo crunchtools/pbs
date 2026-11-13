@@ -12,16 +12,17 @@ OFFLINE COPY (4 TB USB drive, unplugged, refreshed once a year by hand)
 LUKS2 UUID e692da8c-d6fe-4809-9f01-8f686ace1149. Slot 0 is the BitWarden
 passphrase; slot 1 is Exedore's TPM (no PCRs), so on Exedore it opens without the
 passphrase. NOT in crypttab/fstab: it must never auto-mount.
-  systemctl stop ColdCopy.timer    # keep the monthly run from colliding
-  cryptsetup open --token-only /dev/disk/by-uuid/e692da8c-d6fe-4809-9f01-8f686ace1149 shelf
-  mkdir -p /var/mnt/shelf && mount /dev/mapper/shelf /var/mnt/shelf
-  podman run --rm --pull=newer --security-opt label=disable --name pbs-cold-copy \
-    -v /etc/rclone.conf:/etc/rclone.conf:ro -v /var/mnt/shelf:/data --tmpfs /tmp:rw \
-    --network=host -e COLD_HOST=exedore.dc2.crunchtools.com \
-    quay.io/crunchtools/pbs:latest -B -m ColdCopy -d /data
-  umount /var/mnt/shelf && cryptsetup close shelf && systemctl start ColdCopy.timer
-Then unplug it. Same COLD_HOST on purpose: the marker it refreshes is the
-monthly one, so Cold Copy Freshness never judges the yearly copy.
+  Plug it in, then: systemctl start OfflineCopy.service   (hours; journalctl -fu)
+  OfflineCopy.service does the whole procedure: stop ColdCopy.timer, TPM-open,
+  mount, ColdCopy from live pCloud, then ALWAYS umount, close and restart the
+  timer, success or failure. Unplug only when /dev/mapper/shelf is gone. The
+  checklist wraps it: josui-skills skills/annual-checklist/scripts/
+  offline-copy-refresh.sh.
+
+VERIFY (on demand, after a copy): systemctl start ColdVerify.service
+  pbs -V against live pCloud with /var/mnt/onsite mounted read-only. Refuses to
+  start during a copy. The monthly checklist runs it after a fresh ColdCopy run
+  (josui-skills onsite-copy-run.sh, then onsite-copy-verify.sh).
 
 /etc/rclone.conf -- Exedore's OWN pCloud token (never copy another host's;
 authorizing elsewhere revoked lotor's once). 0600 root.
