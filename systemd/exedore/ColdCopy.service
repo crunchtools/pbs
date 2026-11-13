@@ -1,0 +1,42 @@
+[Unit]
+Description=Cold copy of pCloud to the 4 TB drive (pbs ColdCopy)
+Documentation=https://github.com/crunchtools/pbs
+# Exedore is a Crunchtools-owned host, not a CSB, so none of breetai's
+# unlock-is-the-trigger machinery applies (RT#1628): the drive unlocks at boot
+# from the TPM (crypttab) and stays mounted, and ColdCopy.timer runs this weekly.
+# The breetai objection to a timer -- it fires on a locked drive and succeeds --
+# is answered by the mountpoint check below, which FAILS the run when the drive
+# is not there. Cold Copy Freshness on gloval is still the backstop.
+RequiresMountsFor=/var/mnt/coldcopy
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# The first pass after a move can be the whole 733 GiB; systemd must not call
+# that a hang.
+TimeoutStartSec=0
+Nice=10
+IOSchedulingClass=idle
+ExecStartPre=/usr/bin/mountpoint -q /var/mnt/coldcopy
+# Clear a dead leftover container; a running one makes the run fail on the
+# name, which is loud but never kills live work. Same as the gloval units.
+ExecStartPre=-/usr/bin/podman rm pbs-cold-copy
+# The block inhibitor is what the rhel10-bootc-server update interlock
+# (RT#1594) defers on, so an image update cannot reboot through a sync.
+ExecStart=/usr/bin/systemd-inhibit \
+    --what=shutdown \
+    --mode=block \
+    --who=pbs \
+    --why="Cold copy in flight" \
+    /usr/bin/podman run --rm \
+    --pull=newer \
+    --security-opt label=disable \
+    --name pbs-cold-copy \
+    -v /etc/rclone.conf:/etc/rclone.conf:ro \
+    -v /var/mnt/coldcopy:/data \
+    --tmpfs /tmp:rw \
+    --network=host \
+    -e COLD_HOST=exedore.dc2.crunchtools.com \
+    quay.io/crunchtools/pbs:latest \
+    -B -m ColdCopy -d /data

@@ -1,0 +1,14 @@
+Host config on exedore.dc2.crunchtools.com that these units depend on.
+
+/etc/crypttab -- unlock at boot from the TPM, no PCR binding (Secure Boot is
+off by decision, so PCR 7 would add nothing and break on firmware updates):
+  coldcopy UUID=e692da8c-d6fe-4809-9f01-8f686ace1149 none tpm2-device=auto,nofail,x-systemd.device-timeout=30s
+
+/etc/fstab:
+  /dev/mapper/coldcopy /var/mnt/coldcopy ext4 defaults,nofail,x-systemd.device-timeout=30s 0 2
+
+Enrol (prompts for the BitWarden passphrase, which stays the recovery path):
+  systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs= /dev/disk/by-uuid/e692da8c-d6fe-4809-9f01-8f686ace1149
+
+/etc/rclone.conf -- Exedore's OWN pCloud token (never copy another host's;
+authorizing elsewhere revoked lotor's once). 0600 root.
