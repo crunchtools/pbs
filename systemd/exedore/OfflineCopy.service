@@ -17,9 +17,10 @@ Nice=10
 IOSchedulingClass=idle
 Environment=SHELF_DEV=/dev/disk/by-uuid/e692da8c-d6fe-4809-9f01-8f686ace1149
 ExecStartPre=/usr/bin/test -e ${SHELF_DEV}
-ExecStartPre=/usr/bin/sh -c '! systemctl is-active -q ColdCopy.service ColdVerify.service'
-# Keep the monthly run from starting into the middle of this one.
+# Timer off first, then the check: the other order leaves a window where the
+# timer fires between them. If the check fails, ExecStopPost restarts the timer.
 ExecStartPre=/usr/bin/systemctl stop ColdCopy.timer
+ExecStartPre=/usr/bin/sh -c '! systemctl is-active -q ColdCopy.service ColdVerify.service'
 # Slot 1 is Exedore's TPM (no PCRs), so this opens without the passphrase.
 ExecStartPre=/usr/sbin/cryptsetup open --token-only ${SHELF_DEV} shelf
 ExecStartPre=/usr/bin/mkdir -p /var/mnt/shelf

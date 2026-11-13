@@ -100,6 +100,12 @@ done
 # unconditional (ExecStopPost) and in order: unmount, re-lock, timer on.
 unit_has "offline refuses without the drive"        '^ExecStartPre=/usr/bin/test -e \$\{SHELF_DEV\}$' "$EX/OfflineCopy.service"
 unit_has "offline stops the monthly timer first"    '^ExecStartPre=/usr/bin/systemctl stop ColdCopy.timer$' "$EX/OfflineCopy.service"
+pre=$(grep '^ExecStartPre=' "$EX/OfflineCopy.service" | tr '\n' ' ')
+case "$pre" in
+    *"stop ColdCopy.timer"*"is-active -q ColdCopy.service"*)
+        echo "  PASS: offline stops the timer before checking for a running copy"; PASS=$((PASS + 1));;
+    *) echo "  FAIL: offline checks for a running copy before stopping the timer (race)"; FAIL=$((FAIL + 1));;
+esac
 unit_has "offline writes to the shelf, not on-site" '-v /var/mnt/shelf:/data ' "$EX/OfflineCopy.service"
 stop=$(grep '^ExecStopPost=' "$EX/OfflineCopy.service" | tr '\n' ' ')
 case "$stop" in
