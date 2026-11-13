@@ -82,6 +82,35 @@ unit_has "holds a strong block inhibitor"        '--mode=block([^-]|$)' "$EX/Col
 unit_has "prunes only inside the attic"          "find $mnt/attic -mindepth 1 -maxdepth 1 -type d -mtime \\+[0-9]+ " "$EX/ColdCopy.service"
 unit_has "timer catches up after downtime"       '^Persistent=true$' "$EX/ColdCopy.timer"
 
+echo "=== exedore: verify and offline refresh units ==="
+# The verify must never be able to write to the copy it judges, must refuse to
+# start mid-copy, and must not use Conflicts= (symmetric: a hand-started verify
+# would kill an in-flight copy).
+unit_has "verify binds the on-site copy read-only" "-v $mnt:/data:ro " "$EX/ColdVerify.service"
+unit_has "verify runs pbs -V, not -B"               '-V -m ColdCopy -d /data$' "$EX/ColdVerify.service"
+unit_has "verify refuses to start during a copy"    "is-active -q ColdCopy.service" "$EX/ColdVerify.service"
+unit_has "verify fails when $mnt is not mounted"    "^ExecStartPre=/usr/bin/mountpoint -q $mnt\$" "$EX/ColdVerify.service"
+for u in ColdVerify OfflineCopy; do
+    grep -q '^Conflicts=' "$EX/$u.service" \
+        && { echo "  FAIL: $u.service uses Conflicts= (would kill a running copy)"; FAIL=$((FAIL + 1)); } \
+        || { echo "  PASS: $u.service does not use Conflicts="; PASS=$((PASS + 1)); }
+done
+# The offline refresh's failure mode was a hand procedure abandoned halfway:
+# drive unlocked and mounted, monthly timer stopped. Cleanup must be
+# unconditional (ExecStopPost) and in order: unmount, re-lock, timer on.
+unit_has "offline refuses without the drive"        '^ExecStartPre=/usr/bin/test -e \$\{SHELF_DEV\}$' "$EX/OfflineCopy.service"
+unit_has "offline stops the monthly timer first"    '^ExecStartPre=/usr/bin/systemctl stop ColdCopy.timer$' "$EX/OfflineCopy.service"
+unit_has "offline writes to the shelf, not on-site" '-v /var/mnt/shelf:/data ' "$EX/OfflineCopy.service"
+stop=$(grep '^ExecStopPost=' "$EX/OfflineCopy.service" | tr '\n' ' ')
+case "$stop" in
+    *umount\ /var/mnt/shelf*cryptsetup\ close\ shelf*systemctl\ start\ ColdCopy.timer*)
+        echo "  PASS: offline always unmounts, re-locks, then restarts the timer"; PASS=$((PASS + 1));;
+    *) echo "  FAIL: offline ExecStopPost cleanup missing or out of order"; FAIL=$((FAIL + 1));;
+esac
+grep -q '^ExecStopPost=.*mount /dev/mapper/shelf' "$EX/OfflineCopy.service" \
+    && { echo "  FAIL: offline mounts in ExecStopPost"; FAIL=$((FAIL + 1)); } \
+    || { echo "  PASS: offline never mounts on the way out"; PASS=$((PASS + 1)); }
+
 echo "=== the Servers sync: the perpetually-hot trees ==="
 # Static assertions on the exclude list, not on rclone's matching -- the depth
 # semantics of these patterns are rclone's and were verified against rclone
@@ -117,6 +146,19 @@ exp() {
 exp "-h exits 0"                      0 "$(pbs_rc -h)"
 exp "an unrecognised option exits 2"  2 "$(pbs_rc -Z)"
 exp "ColdCopy's own flags are known"  1 "$(pbs_rc -B -m ColdCopy -d /nonexistent-not-a-mount)"
+
+echo "=== pbs.sh: -V counts every module ==="
+# ColdVerify.service trusts pbs -V's exit status. A failed early module must not
+# be masked by a later one that passes.
+eval "$(sed -n '/^verify() {/,/^}/p' "$PBS")"
+verify_FailA() { return 1; }
+verify_PassB() { return 0; }
+modules="FailA PassB"
+verify && { echo "  FAIL: a failed module was masked by a later pass"; FAIL=$((FAIL + 1)); } \
+       || { echo "  PASS: a failed module fails -V"; PASS=$((PASS + 1)); }
+modules="PassB"
+verify && { echo "  PASS: all modules passing passes -V"; PASS=$((PASS + 1)); } \
+       || { echo "  FAIL: a clean verify reported failure"; FAIL=$((FAIL + 1)); }
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

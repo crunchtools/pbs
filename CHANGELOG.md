@@ -8,6 +8,23 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- **`systemd/exedore/ColdVerify.service` and `OfflineCopy.service`.**
+  - `ColdVerify` hash-checks the on-site copy against live pCloud (`pbs -V`) on
+    demand, with the volume bound read-only. It refuses to start during a copy.
+  - `OfflineCopy` turns the yearly shelf-drive refresh in `host-config.txt` into
+    a unit. A dropped ssh session halfway through the hand procedure left the
+    monthly timer stopped and the drive unlocked and mounted. The unit's
+    `ExecStopPost` unmounts, re-locks and restarts the timer however the run
+    ends.
+  - Neither unit uses `Conflicts=`, which is symmetric and would let a verify
+    started by hand kill an in-flight copy.
+  - The josui-skills monthly and annual checklists start both units.
+
+### Fixed
+
+- `pbs -V` over several modules returned only the last module's status, so an
+  early failure could exit 0. Every module now counts.
+
 - **`systemd/exedore/`: the cold copy on its own host** (RT#1628). The copy
   moves off breetai, a Red Hat CSB where IT's root agents could read it during
   every sync, to Exedore, a Crunchtools-owned home server, and splits in two:

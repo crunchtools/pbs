@@ -1,0 +1,39 @@
+[Unit]
+Description=Hash-check Exedore's on-site copy against live pCloud (pbs -V ColdCopy)
+Documentation=https://github.com/crunchtools/pbs
+# Started on demand, by the monthly checklist (josui-skills onsite-copy-verify.sh)
+# or by hand. No timer: a verify only means something right after a copy.
+#
+# No Conflicts= with ColdCopy.service on purpose. Conflicts is symmetric, so a
+# verify started by hand would kill an in-flight copy. The guard below refuses
+# to start during a copy instead; a copy that starts mid-verify is caught by the
+# caller comparing ColdCopy's InvocationID before and after.
+RequiresMountsFor=/var/mnt/onsite
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Hashes the whole local copy (rclone check --checksum); can take hours.
+TimeoutStartSec=0
+Nice=10
+IOSchedulingClass=idle
+ExecStartPre=/usr/bin/mountpoint -q /var/mnt/onsite
+ExecStartPre=/usr/bin/sh -c '! systemctl is-active -q ColdCopy.service OfflineCopy.service'
+ExecStartPre=-/usr/bin/podman rm pbs-cold-verify
+# Read-only bind: a verify that could write is one bug away from being a sync.
+ExecStart=/usr/bin/systemd-inhibit \
+    --what=shutdown \
+    --mode=block \
+    --who=pbs \
+    --why="Cold copy verify in flight" \
+    /usr/bin/podman run --rm \
+    --pull=newer \
+    --security-opt label=disable \
+    --name pbs-cold-verify \
+    -v /etc/rclone.conf:/etc/rclone.conf:ro \
+    -v /var/mnt/onsite:/data:ro \
+    --tmpfs /tmp:rw \
+    --network=host \
+    quay.io/crunchtools/pbs:latest \
+    -V -m ColdCopy -d /data
