@@ -358,6 +358,26 @@ dupes=$(sed -n 's/^ *--name \(.*\) \\$/\1/p' "$UNITS"/*.service | sort | uniq -d
     && { echo "  PASS: every rotation has its own container name"; PASS=$((PASS + 1)); } \
     || { echo "  FAIL: duplicate container names: $dupes"; FAIL=$((FAIL + 1)); }
 
+echo "=== exedore: the on-site cold copy unit ==="
+# A timer-driven copy is only safe if a missing volume FAILS the run, and the
+# guard, the mount dependency and the bind mount must all name the same path --
+# a copy-paste that moved one of them would sync into the root filesystem.
+EX="$HERE/../systemd/exedore"
+xc() { # <desc> <grep -E pattern> <file>
+    grep -qE -- "$2" "$3" \
+        && { echo "  PASS: $1"; PASS=$((PASS + 1)); } \
+        || { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
+}
+mnt=$(sed -n 's/^RequiresMountsFor=//p' "$EX/ColdCopy.service")
+[ -n "$mnt" ] && { echo "  PASS: ColdCopy.service requires its mount ($mnt)"; PASS=$((PASS + 1)); } \
+    || { echo "  FAIL: ColdCopy.service has no RequiresMountsFor"; FAIL=$((FAIL + 1)); }
+xc "fails the run when $mnt is not mounted" "^ExecStartPre=/usr/bin/mountpoint -q $mnt\$" "$EX/ColdCopy.service"
+xc "syncs into $mnt and nowhere else"      "-v $mnt:/data " "$EX/ColdCopy.service"
+xc "cleans up its own container"           '^ExecStartPre=-/usr/bin/podman rm pbs-cold-copy$' "$EX/ColdCopy.service"
+xc "holds a strong block inhibitor"        '--mode=block([^-]|$)' "$EX/ColdCopy.service"
+xc "prunes only inside the attic"          "find $mnt/attic -mindepth 1 -maxdepth 1 -type d -mtime \\+[0-9]+ " "$EX/ColdCopy.service"
+xc "timer catches up after downtime"       '^Persistent=true$' "$EX/ColdCopy.timer"
+
 echo "=== the Servers sync: the perpetually-hot trees ==="
 # Static assertions on the exclude list, not on rclone's matching -- the depth
 # semantics of these patterns are rclone's and were verified against rclone

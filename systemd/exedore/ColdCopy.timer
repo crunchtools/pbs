@@ -1,0 +1,13 @@
+[Unit]
+Description=Monthly on-site copy of pCloud to Exedore's NVMe
+Documentation=https://github.com/crunchtools/pbs
+
+[Timer]
+# The 2nd of the month, after gloval's PersonalBackups and ServerBackups
+# monthlies (1st, 04:00/05:00) have landed in pCloud. Local time is
+# America/New_York. Persistent so a run missed while powered off happens at boot.
+OnCalendar=*-*-02 06:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
