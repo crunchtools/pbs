@@ -4,21 +4,10 @@ path = "pbs.sh"
 justification = "Container entrypoint COPYed into the image bin directory and set as ENTRYPOINT by Containerfile"
 classification = "by_design"
 
-# Not a stray helper: it is the ExecStart of ColdCopy.service, and it sits in
-# systemd/breetai/ beside the two units it belongs to, mirroring systemd/gloval/.
-# It exists as a file rather than an ExecStart one-liner because the run is three
-# steps -- resolve the udisks mount, run the container, then re-lock the drive
-# from an EXIT trap so the plaintext window closes even on failure.
-[[exceptions]]
-check = "random_scripts"
-path = "systemd/breetai/cold-copy.sh"
-justification = "ExecStart of ColdCopy.service, shipped alongside its units in systemd/breetai/ as systemd/gloval/ does; installed to ~/.local/bin/cold-copy"
-classification = "by_design"
-
 # Ruff is not missing; it moved. Gourmand's IF001 looks for a literal
 # `ruff-check` hook id, and under python-sdlc (constitution XII, v1.30.0) ruff
 # runs inside the `sdlc-commit` hook, configured by [tool.ruff] in
-# pyproject.toml. Same precedent as trentina.
+# pyproject.toml. Same precedent as trentina and petit.
 [[exceptions]]
 check = "linter_configuration"
 path = ".pre-commit-config.yaml"

@@ -309,11 +309,9 @@ backup_ColdCopy() {
 	# clear. check_personal_backup_freshness.sh carries the same warning about
 	# its directory list.
 	#
-	# `hostname -f` is right on gloval and lotor, where it IS the fleet name. On
-	# breetai it is the CSB name -- smccarty-thinkpadx1carbongen12.rmtusoh.csb --
-	# which changed when the laptop was reinstalled on 2026-10-04 and will change
-	# again. That host's unit sets COLD_HOST=breetai.dc2.crunchtools.com, matching
-	# where pcloud-sync already writes its Projects backup.
+	# `hostname -f` is not trusted for it: on breetai, the cold copy's first
+	# host, it was the CSB name and changed on a reinstall. Exedore's unit sets
+	# COLD_HOST=exedore.dc2.crunchtools.com explicitly for the same reason.
 	local hostname
 	hostname=${COLD_HOST:-$(hostname -f)}
 

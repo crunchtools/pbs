@@ -35,8 +35,7 @@ tool, not a public service.
 
 The `systemd/` units are the host side of the contract. A unit directory is
 named for the host that runs it — `systemd/gloval/` for the six rotations,
-`systemd/exedore/` for Cold Copy (`systemd/breetai/` holds the retiring
-unlock-triggered version until the drive's move is verified, RT#1628) — and the units at the top of `systemd/` are
+`systemd/exedore/` for Cold Copy — and the units at the top of `systemd/` are
 the timer-driven template for any other host. Each runs the image once with
 `--network=host`, a tmpfs `/tmp`, `/etc/rclone.conf` read-only and `/home` and
 `/var/home` read-only.
