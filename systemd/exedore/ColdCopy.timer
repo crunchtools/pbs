@@ -1,11 +1,12 @@
 [Unit]
-Description=Weekly cold copy of pCloud to the 4 TB drive
+Description=Monthly on-site copy of pCloud to Exedore's NVMe
 Documentation=https://github.com/crunchtools/pbs
 
 [Timer]
-# Sunday morning, after gloval's Saturday ServerBackups rotation (08:00 UTC,
-# hours long) has landed in pCloud. Local time on Exedore is America/New_York.
-OnCalendar=Sun *-*-* 06:00:00
+# The 2nd of the month, after gloval's PersonalBackups and ServerBackups
+# monthlies (1st, 04:00/05:00) have landed in pCloud. Local time is
+# America/New_York. Persistent so a run missed while powered off happens at boot.
+OnCalendar=*-*-02 06:00:00
 Persistent=true
 
 [Install]

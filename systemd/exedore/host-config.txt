@@ -1,14 +1,27 @@
-Host config on exedore.dc2.crunchtools.com that these units depend on.
+Host config on exedore.dc2.crunchtools.com that these units depend on (RT#1628).
 
-/etc/crypttab -- unlock at boot from the TPM, no PCR binding (Secure Boot is
-off by decision, so PCR 7 would add nothing and break on firmware updates):
-  coldcopy UUID=e692da8c-d6fe-4809-9f01-8f686ace1149 none tpm2-device=auto,nofail,x-systemd.device-timeout=30s
+ON-SITE COPY (what ColdCopy.service writes, monthly)
+LV cs_exedore/onsite on the internal NVMe, LUKS2, TPM2-only: no passphrase and no
+recovery key, on purpose. It is a copy of pCloud, so if the TPM is lost the fix is
+to reformat it and run ColdCopy again. No PCR binding: Secure Boot is off by
+decision, so PCR 7 would add nothing and break on firmware updates.
+  /etc/crypttab: onsite UUID=<luksUUID of cs_exedore/onsite> none tpm2-device=auto,nofail,x-systemd.device-timeout=30s
+  /etc/fstab:    /dev/mapper/onsite /var/mnt/onsite xfs defaults,nofail,x-systemd.device-timeout=30s 0 2
 
-/etc/fstab:
-  /dev/mapper/coldcopy /var/mnt/coldcopy ext4 defaults,nofail,x-systemd.device-timeout=30s 0 2
-
-Enrol (prompts for the BitWarden passphrase, which stays the recovery path):
-  systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs= /dev/disk/by-uuid/e692da8c-d6fe-4809-9f01-8f686ace1149
+OFFLINE COPY (4 TB USB drive, unplugged, refreshed once a year by hand)
+LUKS2 UUID e692da8c-d6fe-4809-9f01-8f686ace1149. Slot 0 is the BitWarden
+passphrase; slot 1 is Exedore's TPM (no PCRs), so on Exedore it opens without the
+passphrase. NOT in crypttab/fstab: it must never auto-mount.
+  systemctl stop ColdCopy.timer    # keep the monthly run from colliding
+  cryptsetup open --token-only /dev/disk/by-uuid/e692da8c-d6fe-4809-9f01-8f686ace1149 shelf
+  mkdir -p /var/mnt/shelf && mount /dev/mapper/shelf /var/mnt/shelf
+  podman run --rm --pull=newer --security-opt label=disable --name pbs-cold-copy \
+    -v /etc/rclone.conf:/etc/rclone.conf:ro -v /var/mnt/shelf:/data --tmpfs /tmp:rw \
+    --network=host -e COLD_HOST=exedore.dc2.crunchtools.com \
+    quay.io/crunchtools/pbs:latest -B -m ColdCopy -d /data
+  umount /var/mnt/shelf && cryptsetup close shelf && systemctl start ColdCopy.timer
+Then unplug it. Same COLD_HOST on purpose: the marker it refreshes is the
+monthly one, so Cold Copy Freshness never judges the yearly copy.
 
 /etc/rclone.conf -- Exedore's OWN pCloud token (never copy another host's;
 authorizing elsewhere revoked lotor's once). 0600 root.

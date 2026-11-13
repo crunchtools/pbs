@@ -8,16 +8,18 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- **`systemd/exedore/`: the cold copy on its own host** (RT#1628). The 4 TB
-  drive moves off breetai, a Red Hat CSB where IT's root agents could read it
-  during every sync, to Exedore, a Crunchtools-owned home server. There the
-  drive unlocks at boot from the TPM and stays mounted, and `ColdCopy.timer`
-  runs the copy every Sunday, so it no longer waits for someone to plug in a
-  cable and type a passphrase. The run holds the same shutdown inhibitor as the
-  gloval rotations, so the bootc update interlock waits for it, and it fails if
-  the drive is not mounted rather than succeeding on nothing.
-  `host-config.txt` records the crypttab, fstab and rclone setup the units
-  depend on. Units only, no image change, so no version bump.
+- **`systemd/exedore/`: the cold copy on its own host** (RT#1628). The copy
+  moves off breetai, a Red Hat CSB where IT's root agents could read it during
+  every sync, to Exedore, a Crunchtools-owned home server, and splits in two:
+  - **On-site, monthly:** `ColdCopy.timer` syncs pCloud on the 2nd of each month
+    to a TPM-unlocked LUKS volume on Exedore's NVMe. The run holds the same
+    shutdown inhibitor as the gloval rotations, so the bootc update interlock
+    waits for it; it fails if the volume is not mounted rather than succeeding
+    on nothing; and it prunes the attic to 90 days so the volume cannot fill.
+  - **Offline, yearly:** the 4 TB USB drive is unplugged and refreshed by hand
+    once a year (`host-config.txt`). A stolen pCloud token or a compromised
+    Exedore cannot reach a drive on a shelf.
+  Units, host notes and their test only; no image change, so no version bump.
 
 ## [2.7.4] - 2026-11-11
 
