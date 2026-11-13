@@ -28,7 +28,11 @@ All notable changes to this project are documented here. The format follows
   path unit is disabled. The wrapper's tests went with it; what it guarded
   (an unmounted destination, a run that exits 0 having copied nothing) is
   enforced by pbs.sh and the Exedore unit, and still tested. The `xc` test
-  helper is now `unit_has`.
+  helper is now `unit_has`. The wrapper's relock-on-exit goes too, on purpose:
+  the on-site volume is internal and TPM-unlocked at boot, so it is plaintext
+  whenever Exedore is up by design (its protection is against a powered-off or
+  stolen disk), and the USB drive is only opened by hand once a year, by a
+  procedure in `host-config.txt` that ends by unmounting and closing it.
 
 ## [2.7.4] - 2026-11-11
 
