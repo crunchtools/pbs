@@ -1,4 +1,4 @@
-"""Run the cold-copy guard suite under pytest, so CI actually runs it.
+"""Run the host-unit and CLI guard suite under pytest, so CI actually runs it.
 
 `[tool.pytest.ini_options] testpaths = ["tests"]` is what `sdlc ci` drives, and
 pytest does not collect bare shell scripts. Without this wrapper
@@ -7,9 +7,8 @@ test at all: the guards it pins are the ones that stop a backup that copied
 nothing from reporting success, and a test nobody runs cannot notice when they
 regress.
 
-The logic lives in the shell script because the thing under test is a shell
-script, and rewriting its guards in Python would test a reimplementation rather
-than what runs on breetai.
+The checks live in a shell script because what they pin are unit files and a
+shell entrypoint; restating them in Python would test a reimplementation.
 """
 
 from __future__ import annotations
@@ -21,8 +20,8 @@ SUITE = Path(__file__).parent / "test-cold-copy.sh"
 
 
 def test_cold_copy_guards() -> None:
-    """cold-copy.sh's marker guard, re-fire stamp and release path, plus pbs.sh's
-    CLI exit contract. The script prints one line per case and exits nonzero if
+    """The host units' guards (mount, container, inhibitor, attic pruning) and
+    pbs.sh's CLI exit contract. The script prints one line per case and exits nonzero if
     any failed; its output is attached on failure."""
     assert SUITE.is_file(), f"missing suite: {SUITE}"
     proc = subprocess.run(
