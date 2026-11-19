@@ -51,6 +51,15 @@ All notable changes to this project are documented here. The format follows
   stolen disk), and the USB drive is only opened by hand once a year, by a
   procedure in `host-config.txt` that ends by unmounting and closing it.
 
+### Changed
+
+- The container release runs constitution v1.51.0's `container-release.yml`
+  (was v1.46.0) and grants it `issues: write`, so a failed scheduled rebuild
+  opens an issue instead of only warning. A `v*` promote now also refuses an
+  image whose `version` label names a different release of this repo, so the
+  release PR must keep moving the Containerfile label along with the other
+  version strings.
+
 ## [2.7.4] - 2026-11-11
 
 ### Changed
