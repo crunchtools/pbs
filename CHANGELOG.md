@@ -52,6 +52,7 @@ All notable changes to this project are documented here. The format follows
   procedure in `host-config.txt` that ends by unmounting and closing it.
 
 ### Changed
+- Gatehouse triage receives the review job's result (`review_result`), so a PR whose review died before posting anything is held instead of passing.
 
 - The container release runs constitution v1.51.0's `container-release.yml`
   (was v1.46.0) and grants it `issues: write`, so a failed scheduled rebuild
