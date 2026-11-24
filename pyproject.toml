@@ -38,3 +38,9 @@ skip = ["semgrep"]
 
 [tool.sdlc]
 repo-kinds = ["container-image"]
+
+[tool.sdlc.image]
+# Written by crunchtools/sdlc's scripts/convert_repo.py: moved from the workflows.
+image = "quay.io/crunchtools/pbs"
+boot = "command"
+boot-command = "bash tests/image/boot-gate.sh"
