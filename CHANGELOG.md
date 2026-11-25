@@ -54,6 +54,8 @@ All notable changes to this project are documented here. The format follows
   procedure in `host-config.txt` that ends by unmounting and closing it.
 
 ### Changed
+- `pyproject.toml` states the release version (`[project].version`), which
+  the release job reads; it said `"0"`, so the 3.0.0 tag was refused.
 - Gatehouse triage receives the review job's result (`review_result`), so a PR whose review died before posting anything is held instead of passing.
 
 - The container release runs constitution v1.51.0's `container-release.yml`

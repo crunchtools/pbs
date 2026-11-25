@@ -4,7 +4,7 @@
 # need_lock_dep) rather than reporting a pass it never ran.
 [project]
 name = "pbs"
-version = "0"
+version = "3.0.0"
 requires-python = ">=3.10"
 dependencies = []
 
