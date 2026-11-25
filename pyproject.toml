@@ -42,5 +42,23 @@ repo-kinds = ["container-image"]
 [tool.sdlc.image]
 # Written by crunchtools/sdlc's scripts/convert_repo.py: moved from the workflows.
 image = "quay.io/crunchtools/pbs"
-boot = "command"
-boot-command = "bash tests/image/boot-gate.sh"
+# pbs is a run-to-completion CLI: no units to bring up, no port, no HEALTHCHECK,
+# nothing for the image job's profiles to boot. The gate it ran lives in
+# `boot-gate` below, run inside the built image.
+boot = "none"
+boot-none-reason = "run-to-completion CLI with no server; the boot-gate ci check runs the entrypoint inside this image"
+
+[tool.sdlc.ci]
+checks = ["pbs-image", "boot-gate"]
+
+[tool.sdlc.ci.pbs-image]
+kind = "image-build"
+
+# The boot gate container.yml ran (tests/image/boot-check.sh): the entrypoint
+# answers -h with every flag the units use, rejects an unknown option with 2,
+# and every tool pbs.sh shells out to is installed. argv[0] replaces the
+# image's entrypoint, and the script calls pbs.sh itself.
+[tool.sdlc.ci.boot-gate]
+kind = "command"
+image = "localhost/pbs:sdlc"
+argv = ["bash", "tests/image/boot-check.sh"]
