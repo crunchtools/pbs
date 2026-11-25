@@ -1,0 +1,19 @@
+# What the image job's container scan does not judge in this image. It fails
+# on a fixable Critical in any binary it finds, including ones a RHEL package
+# ships. Only one kind of entry belongs here: a finding in a Red Hat package
+# that has no fixed build in UBI 10 yet and is unreachable in how pbs uses it.
+# Anything we install ourselves (rclone) is fixed in the Containerfile, never
+# ignored here.
+ignore:
+  # podman-remote 6.1.4-1.el10_3 (ubi-10-appstream) vendors golang.org/x/net
+  # v0.59.0. GO-2026-6612 is a flow-control bug in the HTTP/2 *server*
+  # (x/net/http2, net/http): a malicious client can overrun
+  # MaxReceiveBufferPerConnection. pbs runs podman-remote only as a client,
+  # `podman-remote --url unix:///run/podman/podman.sock ps|exec`, to dump
+  # MariaDB and PostgreSQL from the host's containers; it never serves HTTP/2.
+  # Drop this entry when UBI ships a podman-remote with x/net >= 0.60.0; grype
+  # has no expiry, so this comment is the expiry. Scoped to this ID at this
+  # path, so a new Critical in podman-remote still fails the build.
+  - vulnerability: GO-2026-6612
+    package:
+      location: "/usr/bin/podman-remote"
