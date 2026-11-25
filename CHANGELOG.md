@@ -22,6 +22,17 @@ All notable changes to this project are documented here. The format follows
     started by hand kill an in-flight copy.
   - The josui-skills monthly and annual checklists start both units.
 
+### Security
+
+- rclone comes from upstream's v1.76.0 release, recorded with its SHA-256 in
+  `rclone.lock`, instead of EPEL's 1.75.2, whose go1.26.7 and brotli 1.2.2
+  carried fixable Criticals (GO-2026-6888, on the KEV list, GO-2026-6604,
+  GO-2026-6612) that the release image gate refuses. The EPEL repository and
+  key are no longer in the image.
+- `.grype.yaml` accepts GO-2026-6612 in `/usr/bin/podman-remote` alone: it is
+  an HTTP/2 server bug, and pbs uses podman-remote only as a client on the
+  host's unix socket to dump databases. It goes when UBI ships a fixed build.
+
 ### Fixed
 
 - `pbs -V` over several modules returned only the last module's status, so an
